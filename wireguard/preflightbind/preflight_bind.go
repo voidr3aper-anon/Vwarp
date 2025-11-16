@@ -50,13 +50,14 @@ type AmneziaConfig struct {
 
 // Bind wraps a conn.Bind and fires QUIC-like preflight when WG sends a handshake initiation.
 type Bind struct {
-	inner         conn.Bind
-	port443       int            // usually 443
-	payload       []byte         // I1 bytes
-	amneziaConfig *AmneziaConfig // Amnezia configuration
-	mu            sync.Mutex
-	lastSent      map[netip.Addr]time.Time // rate-limit per dst IP
-	interval      time.Duration            // e.g., 1s to avoid duplicate bursts
+	inner            conn.Bind
+	port443          int            // usually 443
+	payload          []byte         // I1 bytes
+	amneziaConfig    *AmneziaConfig // Amnezia configuration
+	mu               sync.Mutex
+	lastSent         map[netip.Addr]time.Time // rate-limit per dst IP
+	interval         time.Duration            // e.g., 1s to avoid duplicate bursts
+	postHandshakeSent map[netip.Addr]bool      // track if post-handshake junk sent per IP
 }
 
 func New(inner conn.Bind, hexPayload string, port int, minInterval time.Duration) (*Bind, error) {
@@ -70,11 +71,12 @@ func New(inner conn.Bind, hexPayload string, port int, minInterval time.Duration
 		return nil, err
 	}
 	return &Bind{
-		inner:    inner,
-		port443:  port,
-		payload:  p,
-		lastSent: make(map[netip.Addr]time.Time),
-		interval: minInterval,
+		inner:             inner,
+		port443:           port,
+		payload:           p,
+		lastSent:          make(map[netip.Addr]time.Time),
+		postHandshakeSent: make(map[netip.Addr]bool),
+		interval:          minInterval,
 	}, nil
 }
 
@@ -92,12 +94,13 @@ func NewWithAmnezia(inner conn.Bind, amneziaConfig *AmneziaConfig, port int, min
 	}
 
 	return &Bind{
-		inner:         inner,
-		port443:       port,
-		payload:       payload,
-		amneziaConfig: amneziaConfig,
-		lastSent:      make(map[netip.Addr]time.Time),
-		interval:      minInterval,
+		inner:             inner,
+		port443:           port,
+		payload:           payload,
+		amneziaConfig:     amneziaConfig,
+		lastSent:          make(map[netip.Addr]time.Time),
+		interval:          minInterval,
+		postHandshakeSent: make(map[netip.Addr]bool),
 	}, nil
 }
 
@@ -566,10 +569,61 @@ func (b *Bind) executeMinimalPreHandshakeSequence(host string) {
 
 func (b *Bind) Send(bufs [][]byte, ep conn.Endpoint) error {
 	b.maybePreflightUsingSameSocket(ep, bufs)
+	
+	// Send post-handshake junk packets if needed
+	b.maybeSendPostHandshakeJunk(ep, bufs)
 
 	// For Cloudflare Warp compatibility, don't apply S1/S2 prefixes
 	// The obfuscation is achieved through junk packets and I1-I5 signature packets
 	return b.inner.Send(bufs, ep)
+}
+
+// maybeSendPostHandshakeJunk sends remaining junk packets after handshake request
+func (b *Bind) maybeSendPostHandshakeJunk(ep conn.Endpoint, bufs [][]byte) {
+	if b.amneziaConfig == nil {
+		return
+	}
+	
+	config := b.amneziaConfig
+	
+	// Calculate remaining junk packets to send after handshake
+	remainingJunk := config.Jc - config.JcBeforeHS
+	if remainingJunk <= 0 {
+		return
+	}
+	
+	// Check if this is a handshake initiation (type 1)
+	var seenHandshakeRequest bool
+	for _, buf := range bufs {
+		if len(buf) > 0 && buf[0] == 1 {
+			seenHandshakeRequest = true
+			break
+		}
+	}
+	
+	if !seenHandshakeRequest {
+		return
+	}
+	
+	dst := ep.DstIP()
+	b.mu.Lock()
+	alreadySent := b.postHandshakeSent[dst]
+	if alreadySent {
+		b.mu.Unlock()
+		return
+	}
+	b.postHandshakeSent[dst] = true
+	b.mu.Unlock()
+	
+	// Send remaining junk packets using WireGuard socket (same source port)
+	// Send immediately after handshake request without delay
+	go func() {
+		for i := 0; i < remainingJunk; i++ {
+			junkPacket := b.generateJunkPacket()
+			_ = b.inner.Send([][]byte{junkPacket}, ep)
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
 }
 
 // applyAmneziaPrefix adds S1/S2 random prefixes to WireGuard packets
