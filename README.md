@@ -2,12 +2,34 @@
 
 Warp-Plus is an open-source implementation of Cloudflare's Warp, enhanced with Psiphon integration for circumventing censorship. This project aims to provide a robust and cross-platform VPN solution that can use psiphon on top of warp and warp-in-warp for changing the user virtual nat location.
 
+**Maintainer**: [voidreaper](https://github.com/voidr3aper-anon)
+
+## 🚀 Quick Start
+
+```bash
+# Basic WARP connection
+warp-plus --bind 127.0.0.1:8086
+
+# With AtomicNoize obfuscation (anti-censorship)
+warp-plus --atomicnoize-enable --bind 127.0.0.1:8086
+
+# Through SOCKS5 proxy (double-VPN)
+warp-plus --proxy socks5://127.0.0.1:1080 --bind 127.0.0.1:8086
+
+# Maximum privacy (AtomicNoize + SOCKS5 proxy)
+warp-plus --proxy socks5://127.0.0.1:1080 --atomicnoize-enable --verbose
+```
+
+📖 **New to these features?** Check out the [SOCKS5 Proxy Guide](SOCKS_PROXY_GUIDE.md) and [AtomicNoize Guide](cmd/docs/ATOMICNOIZE_README.md)
+
 ## Features
 
 - **Warp Integration**: Leverages Cloudflare's Warp to provide a fast and secure VPN service.
 - **Psiphon Chaining**: Integrates with Psiphon for censorship circumvention, allowing seamless access to the internet in restrictive environments.
-- **Warp in Warp Chaining**: Chaning two instances of warp together to bypass location restrictions.
-- **SOCKS5 Proxy Support**: Includes a SOCKS5 proxy for secure and private browsing.
+- **Warp in Warp Chaining**: Chaining two instances of warp together to bypass location restrictions.
+- **AtomicNoize Protocol**: Advanced obfuscation protocol for enhanced privacy and censorship resistance. [Learn more](cmd/docs/ATOMICNOIZE_README.md)
+- **SOCKS5 Proxy Chaining**: Route WireGuard traffic through SOCKS5 proxies for double-VPN setups. [Learn more](SOCKS_PROXY_GUIDE.md)
+- **SOCKS5 Proxy Server**: Includes a SOCKS5 proxy server for secure and private browsing.
 
 ## Getting Started
 
@@ -40,9 +62,62 @@ FLAGS
       --reserved STRING    override wireguard reserved value (format: '1,2,3')
       --wgconf STRING      path to a normal wireguard config
       --test-url STRING    connectivity test url (default: http://connectivity.cloudflareclient.com/cdn-cgi/trace)
+      --proxy STRING       SOCKS5 proxy address to route WireGuard traffic through (e.g., socks5://127.0.0.1:1080)
+      --atomicnoize-enable enable AtomicNoize protocol obfuscation
+      --atomicnoize-packet-size UINT    AtomicNoize packet size (default: 1280)
+      --atomicnoize-offset UINT         AtomicNoize packet offset (default: 8)
+      --atomicnoize-junk-size UINT      AtomicNoize junk size (default: 0)
   -c, --config STRING      path to config file
       --version            displays version number
 ```
+
+### Basic Examples
+
+#### Standard WARP Connection
+```bash
+warp-plus --bind 127.0.0.1:8086
+```
+
+#### With AtomicNoize Obfuscation
+```bash
+warp-plus --atomicnoize-enable --atomicnoize-packet-size 1280 --bind 127.0.0.1:8086
+```
+
+#### Through SOCKS5 Proxy (Double VPN)
+```bash
+# First, start your SOCKS5 proxy (e.g., SSH tunnel, VPN, etc.)
+# Then route WARP through it:
+warp-plus --proxy socks5://127.0.0.1:1080 --bind 127.0.0.1:8086
+```
+
+#### With Psiphon for Censorship Circumvention
+```bash
+warp-plus --cfon --country US --bind 127.0.0.1:8086
+```
+
+#### Warp-in-Warp (Change Location)
+```bash
+warp-plus --gool --bind 127.0.0.1:8086
+```
+
+#### Maximum Privacy Setup
+```bash
+warp-plus \
+  --proxy socks5://127.0.0.1:1080 \
+  --atomicnoize-enable \
+  --atomicnoize-packet-size 1280 \
+  --atomicnoize-junk-size 50 \
+  --verbose
+```
+
+#### Scan for Best Endpoint
+```bash
+warp-plus --scan --rtt 800ms
+```
+
+For more detailed examples and configurations, see:
+- [SOCKS5 Proxy Chaining Guide](SOCKS_PROXY_GUIDE.md)
+- [AtomicNoize Protocol Guide](cmd/docs/ATOMICNOIZE_README.md)
 
 ### Country Codes for Psiphon
 
@@ -96,8 +171,21 @@ bash <(curl -fsSL https://raw.githubusercontent.com/bepass-org/warp-plus/master/
 - برای اسکن ای پی سالم وارپ از دستور `warp --scan` استفاده کنید. 
 - برای ترکیب (chain) دو کانفیگ برای تغییر لوکیشن از دستور `warp --gool` استفاده کنید. 
 
+## Documentation
+
+- **[SOCKS5 Proxy Chaining Guide](docs/SOCKS_PROXY_GUIDE.md)** - Complete guide for double-VPN setups
+- **[AtomicNoize Protocol](docs/ATOMICNOIZE_README.md)** - Advanced obfuscation protocol documentation
+- **[Configuration Examples](example_config.json)** - Sample configuration files(will place later)
+
 ## Acknowledgements
 
+- **Maintainer**: [voidreaper](https://github.com/voidr3aper-anon)
 - Cloudflare Warp
 - Psiphon
+- WireGuard Protocol
+- Original Bepass-org team
 - All contributors and supporters of this project
+
+## License
+
+This project inherits licenses from its components. See [LICENSE](LICENSE) for details.
