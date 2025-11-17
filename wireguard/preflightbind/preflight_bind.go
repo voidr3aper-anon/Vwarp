@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	mathrand "math/rand"
-	"net"
 	"net/netip"
 	"regexp"
 	"strconv"
@@ -19,8 +18,8 @@ import (
 
 var rng = mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
 
-// AmneziaConfig holds the Amnezia WireGuard obfuscation parameters
-type AmneziaConfig struct {
+// AtomicNoizeConfig holds the AtomicNoize WireGuard obfuscation parameters
+type AtomicNoizeConfig struct {
 	// I1-I5: Signature packets for protocol imitation
 	I1 string // Main obfuscation packet (hex string)
 	I2 string // Additional signature packet
@@ -53,7 +52,7 @@ type Bind struct {
 	inner             conn.Bind
 	port443           int            // usually 443
 	payload           []byte         // I1 bytes
-	amneziaConfig     *AmneziaConfig // Amnezia configuration
+	AtomicNoizeConfig     *AtomicNoizeConfig // AtomicNoize configuration
 	mu                sync.Mutex
 	lastSent          map[netip.Addr]time.Time // rate-limit per dst IP
 	interval          time.Duration            // e.g., 1s to avoid duplicate bursts
@@ -80,14 +79,14 @@ func New(inner conn.Bind, hexPayload string, port int, minInterval time.Duration
 	}, nil
 }
 
-// NewWithAmnezia creates a new Bind with Amnezia configuration
-func NewWithAmnezia(inner conn.Bind, amneziaConfig *AmneziaConfig, port int, minInterval time.Duration) (*Bind, error) {
+// NewWithAtomicNoize creates a new Bind with AtomicNoize configuration
+func NewWithAtomicNoize(inner conn.Bind, AtomicNoizeConfig *AtomicNoizeConfig, port int, minInterval time.Duration) (*Bind, error) {
 	var payload []byte
 	var err error
 
-	if amneziaConfig != nil && amneziaConfig.I1 != "" {
+	if AtomicNoizeConfig != nil && AtomicNoizeConfig.I1 != "" {
 		// Parse I1 using CPS format
-		payload, err = parseCPSPacket(amneziaConfig.I1)
+		payload, err = parseCPSPacket(AtomicNoizeConfig.I1)
 		if err != nil {
 			return nil, fmt.Errorf("invalid I1 CPS format: %w", err)
 		}
@@ -97,7 +96,7 @@ func NewWithAmnezia(inner conn.Bind, amneziaConfig *AmneziaConfig, port int, min
 		inner:             inner,
 		port443:           port,
 		payload:           payload,
-		amneziaConfig:     amneziaConfig,
+		AtomicNoizeConfig:     AtomicNoizeConfig,
 		lastSent:          make(map[netip.Addr]time.Time),
 		interval:          minInterval,
 		postHandshakeSent: make(map[netip.Addr]bool),
@@ -204,13 +203,13 @@ func parseCPSPacket(cps string) ([]byte, error) {
 }
 
 // wrapInIKEv2Header wraps payload in IKEv2/IPsec header to mimic legitimate IKE negotiation
-// This adds 52 bytes of IKEv2 framing to match Amnezia's behavior exactly
+// This adds 52 bytes of IKEv2 framing to match AtomicNoize's behavior exactly
 func wrapInIKEv2Header(payload []byte) []byte {
 	if len(payload) == 0 {
 		return payload
 	}
 
-	// Full IKEv2 packet structure to match Amnezia (52 bytes overhead):
+	// Full IKEv2 packet structure to match AtomicNoize (52 bytes overhead):
 	// - IKEv2 Header: 28 bytes
 	// - Security Association Payload: 24 bytes (header + minimal SA data)
 	// Total overhead: 52 bytes
@@ -278,55 +277,58 @@ func wrapInIKEv2Header(payload []byte) []byte {
 
 // generateJunkPacket creates a junk packet with specified size constraints
 func (b *Bind) generateJunkPacket() []byte {
-	if b.amneziaConfig == nil {
+	if b.AtomicNoizeConfig == nil {
 		return nil
 	}
 
-	minSize := b.amneziaConfig.Jmin
-	maxSize := b.amneziaConfig.Jmax
+	minSize := b.AtomicNoizeConfig.Jmin
+	maxSize := b.AtomicNoizeConfig.Jmax
 
-	// UDP cannot send true 0-byte payloads - minimum is 1 byte
-	// When config specifies 0, we send minimal 1-byte packets
+	// Handle zero-size packets based on AllowZeroSize flag
 	if minSize == 0 && maxSize == 0 {
+		if b.AtomicNoizeConfig.AllowZeroSize {
+			return []byte{} // True 0-byte payload (may not work with all UDP implementations)
+		}
 		return []byte{0x00} // Minimal 1-byte packet (UDP requirement)
 	}
 
-	// If Jmin is 0, treat it as 1 (UDP minimum)
+	// If Jmin is 0, treat based on AllowZeroSize flag
 	if minSize == 0 {
-		minSize = 1
+		if !b.AtomicNoizeConfig.AllowZeroSize {
+			minSize = 1
+		}
 		if maxSize == 0 {
-			maxSize = 1
-		}
-		// Random size from minSize to maxSize
-		size := minSize
-		if maxSize > minSize {
-			size = minSize + rng.Intn(maxSize-minSize+1)
-		}
-
-		junk := make([]byte, size)
-		_, err := rand.Read(junk)
-		if err != nil {
-			// Fallback to math/rand if crypto/rand fails
-			for i := range junk {
-				junk[i] = byte(rng.Intn(256))
+			if !b.AtomicNoizeConfig.AllowZeroSize {
+				maxSize = 1
 			}
 		}
-		return junk
 	}
 
-	// Ensure minimum 1 byte for UDP
-	if minSize < 1 {
-		minSize = 1
-	}
-	if maxSize < minSize {
-		maxSize = minSize
+	// Ensure minimum 1 byte for UDP unless AllowZeroSize is true
+	if !b.AtomicNoizeConfig.AllowZeroSize {
+		if minSize < 1 {
+			minSize = 1
+		}
+		if maxSize < minSize {
+			maxSize = minSize
+		}
 	}
 
 	var size int
 	if maxSize == minSize {
 		size = minSize
-	} else {
+	} else if maxSize > minSize {
 		size = minSize + rng.Intn(maxSize-minSize+1)
+	} else {
+		size = minSize
+	}
+
+	// Handle zero-size case
+	if size == 0 {
+		if b.AtomicNoizeConfig.AllowZeroSize {
+			return []byte{}
+		}
+		return []byte{0x00}
 	}
 
 	junk := make([]byte, size)
@@ -338,105 +340,6 @@ func (b *Bind) generateJunkPacket() []byte {
 		}
 	}
 	return junk
-}
-
-// sendJunkPackets sends a series of junk packets synchronously to control exact count
-func (b *Bind) sendJunkPackets(host string, count int, interval time.Duration) {
-	if count <= 0 {
-		return
-	}
-
-	// Send packets synchronously to ensure exact count
-	for i := 0; i < count; i++ {
-		junk := b.generateJunkPacket()
-
-		// Send immediately without goroutine to control count
-		b.sendUDPPacket(host, junk)
-
-		// Wait interval between packets (except for last one)
-		if i < count-1 && interval > 0 {
-			time.Sleep(interval)
-		}
-	}
-}
-
-// sendUDPPacket sends a UDP packet - attempts true zero-byte for empty data
-func (b *Bind) sendUDPPacket(host string, data []byte) {
-	if len(data) == 0 {
-		// Send true zero-byte UDP packet
-		b.sendTrueZeroByteUDP(host)
-		return
-	}
-
-	// Normal UDP packet with data
-	conn, err := net.DialTimeout("udp", net.JoinHostPort(host, strconv.Itoa(b.port443)), 400*time.Millisecond)
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	_ = conn.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
-	_, _ = conn.Write(data)
-}
-
-// sendTrueZeroByteUDP sends true zero-byte UDP packets using standard Go methods
-func (b *Bind) sendTrueZeroByteUDP(host string) {
-	// Use standard Go UDP methods which work reliably for zero-byte packets
-	b.sendStandardZeroByte(host)
-}
-
-// sendStandardZeroByte sends zero-byte UDP packets using standard Go UDP methods
-func (b *Bind) sendStandardZeroByte(host string) {
-	// Method 1: Direct UDP connection with empty byte slice
-	if conn, err := net.DialTimeout("udp", net.JoinHostPort(host, strconv.Itoa(b.port443)), 200*time.Millisecond); err == nil {
-		_ = conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
-		conn.Write([]byte{})
-		conn.Close()
-	}
-
-	// Method 2: PacketConn interface for additional reliability
-	if conn, err := net.ListenPacket("udp", ":0"); err == nil {
-		defer conn.Close()
-		if addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, strconv.Itoa(b.port443))); err == nil {
-			_ = conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
-			conn.WriteTo([]byte{}, addr)
-		}
-	}
-}
-
-func (b *Bind) maybePreflight(ep conn.Endpoint, bufs [][]byte) {
-	dst := ep.DstIP()
-	var seenInit bool
-	for _, buf := range bufs {
-		if handshakeInitiation(buf) {
-			seenInit = true
-			break
-		}
-	}
-	if !seenInit {
-		return
-	}
-
-	now := time.Now()
-	b.mu.Lock()
-	last := b.lastSent[dst]
-	if now.Sub(last) < b.interval {
-		b.mu.Unlock()
-		return
-	}
-	b.lastSent[dst] = now
-	b.mu.Unlock()
-
-	host := dst.String()
-
-	// Execute Amnezia sequence BEFORE sending the actual handshake
-	if b.amneziaConfig != nil {
-		// Send I1 packet and critical junk packets SYNCHRONOUSLY before handshake
-		b.executeMinimalPreHandshakeSequence(host)
-	} else {
-		// Fallback to simple preflight SYNCHRONOUSLY
-		b.executeSimplePreflight(host)
-	}
 }
 
 // maybePreflightUsingSameSocket sends preflight packets using the WireGuard socket (same source port)
@@ -463,17 +366,27 @@ func (b *Bind) maybePreflightUsingSameSocket(ep conn.Endpoint, bufs [][]byte) {
 	b.lastSent[dst] = now
 	b.mu.Unlock()
 
-	// Execute Amnezia sequence using the SAME socket as WireGuard
-	if b.amneziaConfig != nil {
-		b.executeAmneziaPreflightUsingSameSocket(ep)
+	// Execute AtomicNoize sequence using the SAME socket as WireGuard
+	if b.AtomicNoizeConfig != nil {
+		b.executeAtomicNoizePreflightUsingSameSocket(ep)
+
+		// Apply handshake delay if configured
+		if b.AtomicNoizeConfig.HandshakeDelay > 0 {
+			time.Sleep(b.AtomicNoizeConfig.HandshakeDelay)
+		}
 	}
 }
 
-// executeAmneziaPreflightUsingSameSocket sends obfuscation packets using WireGuard's socket
-func (b *Bind) executeAmneziaPreflightUsingSameSocket(ep conn.Endpoint) {
-	config := b.amneziaConfig
+// executeAtomicNoizePreflightUsingSameSocket sends obfuscation packets using WireGuard's socket
+func (b *Bind) executeAtomicNoizePreflightUsingSameSocket(ep conn.Endpoint) {
+	config := b.AtomicNoizeConfig
 	if config == nil {
 		return
+	}
+
+	junkInterval := config.JunkInterval
+	if junkInterval == 0 {
+		junkInterval = 1 * time.Millisecond // Default to 1ms if not specified
 	}
 
 	// Step 1: Send I1 packet with IKEv2 framing using WireGuard socket
@@ -483,12 +396,21 @@ func (b *Bind) executeAmneziaPreflightUsingSameSocket(ep conn.Endpoint) {
 		time.Sleep(2 * time.Millisecond)
 	}
 
+	// Step 1.5: Send junk packets after I1 (if JcAfterI1 is specified)
+	if config.JcAfterI1 > 0 {
+		for i := 0; i < config.JcAfterI1; i++ {
+			junkPacket := b.generateJunkPacket()
+			_ = b.inner.Send([][]byte{junkPacket}, ep)
+			time.Sleep(junkInterval)
+		}
+	}
+
 	// Step 2: Send junk packets using WireGuard socket (SAME source port)
 	if config.JcBeforeHS > 0 {
 		for i := 0; i < config.JcBeforeHS; i++ {
 			junkPacket := b.generateJunkPacket()
 			_ = b.inner.Send([][]byte{junkPacket}, ep)
-			time.Sleep(1 * time.Millisecond)
+			time.Sleep(junkInterval)
 		}
 	}
 
@@ -506,67 +428,6 @@ func (b *Bind) executeAmneziaPreflightUsingSameSocket(ep conn.Endpoint) {
 	}
 }
 
-// executeSimplePreflight sends a simple preflight packet (original behavior)
-func (b *Bind) executeSimplePreflight(host string) {
-	conn, err := net.DialTimeout("udp", net.JoinHostPort(host, strconv.Itoa(b.port443)), 400*time.Millisecond)
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-	_ = conn.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
-	_, _ = conn.Write(b.payload)
-}
-
-// executeMinimalPreHandshakeSequence sends critical packets synchronously before handshake
-// Uses a SINGLE connection (same source port) to match Amnezia's behavior
-func (b *Bind) executeMinimalPreHandshakeSequence(host string) {
-	config := b.amneziaConfig
-	if config == nil {
-		return
-	}
-
-	// Create a SINGLE UDP connection that will be reused for all packets (same source port)
-	conn, err := net.DialTimeout("udp", net.JoinHostPort(host, strconv.Itoa(b.port443)), 500*time.Millisecond)
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	// Step 1: Send I1 packet FIRST with IKEv2 framing
-	if config.I1 != "" && b.payload != nil {
-		framedPayload := wrapInIKEv2Header(b.payload)
-		_ = conn.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
-		_, _ = conn.Write(framedPayload)
-		time.Sleep(2 * time.Millisecond) // Small delay after I1
-	}
-
-	// Step 2: Send junk packets BEFORE handshake (same connection = same port)
-	if config.JcBeforeHS > 0 {
-		for i := 0; i < config.JcBeforeHS; i++ {
-			junkPacket := b.generateJunkPacket()
-			_ = conn.SetWriteDeadline(time.Now().Add(50 * time.Millisecond))
-			_, _ = conn.Write(junkPacket)
-			time.Sleep(1 * time.Millisecond)
-		}
-	}
-
-	// Step 3: Send I2-I5 signature packets (same connection)
-	signatures := []string{"", config.I2, config.I3, config.I4, config.I5}
-	for i, sig := range signatures {
-		if i == 0 || sig == "" {
-			continue
-		}
-		packet, err := parseCPSPacket(sig)
-		if err == nil && len(packet) > 0 {
-			_ = conn.SetWriteDeadline(time.Now().Add(50 * time.Millisecond))
-			_, _ = conn.Write(packet)
-			time.Sleep(1 * time.Millisecond)
-		}
-	}
-
-	// Connection will close when function exits, now WireGuard handshake can proceed
-}
-
 func (b *Bind) Send(bufs [][]byte, ep conn.Endpoint) error {
 	b.maybePreflightUsingSameSocket(ep, bufs)
 
@@ -580,11 +441,11 @@ func (b *Bind) Send(bufs [][]byte, ep conn.Endpoint) error {
 
 // maybeSendPostHandshakeJunk sends remaining junk packets after handshake request
 func (b *Bind) maybeSendPostHandshakeJunk(ep conn.Endpoint, bufs [][]byte) {
-	if b.amneziaConfig == nil {
+	if b.AtomicNoizeConfig == nil {
 		return
 	}
 
-	config := b.amneziaConfig
+	config := b.AtomicNoizeConfig
 
 	// Calculate remaining junk packets to send after handshake
 	remainingJunk := config.Jc - config.JcBeforeHS
@@ -618,61 +479,17 @@ func (b *Bind) maybeSendPostHandshakeJunk(ep conn.Endpoint, bufs [][]byte) {
 	// Send remaining junk packets using WireGuard socket (same source port)
 	// Send immediately after handshake request without delay
 	go func() {
+		junkInterval := config.JunkInterval
+		if junkInterval == 0 {
+			junkInterval = 1 * time.Millisecond // Default to 1ms if not specified
+		}
 		for i := 0; i < remainingJunk; i++ {
 			junkPacket := b.generateJunkPacket()
 			_ = b.inner.Send([][]byte{junkPacket}, ep)
-			time.Sleep(1 * time.Millisecond)
+			time.Sleep(junkInterval)
 		}
 	}()
 }
 
-// applyAmneziaPrefix adds S1/S2 random prefixes to WireGuard packets
-// Note: Only apply prefixes to handshake packets, not data packets for Cloudflare compatibility
-func (b *Bind) applyAmneziaPrefix(buf []byte) []byte {
-	if b.amneziaConfig == nil || len(buf) == 0 {
-		return buf
-	}
+// applyAtomicNoizePrefix adds S1/S2 random prefixes to WireGuard packets
 
-	var prefixSize int
-
-	// Only apply prefixes to handshake packets (types 1 and 2)
-	// For Cloudflare Warp compatibility, don't modify data packets
-	if len(buf) >= 1 {
-		messageType := buf[0]
-		switch messageType {
-		case 1: // Init packet (handshake initiation)
-			prefixSize = b.amneziaConfig.S1
-		case 2: // Response packet (handshake response)
-			prefixSize = b.amneziaConfig.S2
-		default:
-			// For data packets, don't add prefixes to maintain Cloudflare compatibility
-			return buf
-		}
-	}
-
-	// Cap at 64 bytes as per spec
-	if prefixSize > 64 {
-		prefixSize = 64
-	}
-
-	if prefixSize <= 0 {
-		return buf
-	}
-
-	// Generate random prefix
-	prefix := make([]byte, prefixSize)
-	_, err := rand.Read(prefix)
-	if err != nil {
-		// Fallback to math/rand if crypto/rand fails
-		for i := range prefix {
-			prefix[i] = byte(rng.Intn(256))
-		}
-	}
-
-	// Prepend prefix to the original packet
-	result := make([]byte, len(prefix)+len(buf))
-	copy(result, prefix)
-	copy(result[len(prefix):], buf)
-
-	return result
-}

@@ -34,7 +34,7 @@ type WarpOptions struct {
 	WireguardConfig string
 	Reserved        string
 	TestURL         string
-	AmneziaConfig   *preflightbind.AmneziaConfig
+	AtomicNoizeConfig   *preflightbind.AtomicNoizeConfig
 }
 
 type PsiphonOptions struct {
@@ -121,8 +121,8 @@ func runWireguard(ctx context.Context, l *slog.Logger, opts WarpOptions) error {
 
 	// Enable trick and keepalive on all peers in config
 	for i, peer := range conf.Peers {
-		// Only enable old trick functionality if Amnezia is not being used
-		if opts.AmneziaConfig == nil {
+		// Only enable old trick functionality if AtomicNoize is not being used
+		if opts.AtomicNoizeConfig == nil {
 			peer.Trick = true
 		}
 		peer.KeepAlive = 5
@@ -147,7 +147,7 @@ func runWireguard(ctx context.Context, l *slog.Logger, opts WarpOptions) error {
 			continue
 		}
 
-		werr = establishWireguard(l, conf, tunDev, opts.FwMark, t, opts.AmneziaConfig)
+		werr = establishWireguard(l, conf, tunDev, opts.FwMark, t, opts.AtomicNoizeConfig)
 		if werr != nil {
 			continue
 		}
@@ -192,8 +192,8 @@ func runWarp(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoint str
 	// Enable trick and keepalive on all peers in config
 	for i, peer := range conf.Peers {
 		peer.Endpoint = endpoint
-		// Only enable old trick functionality if Amnezia is not being used
-		if opts.AmneziaConfig == nil {
+		// Only enable old trick functionality if AtomicNoize is not being used
+		if opts.AtomicNoizeConfig == nil {
 			peer.Trick = true
 		}
 		peer.KeepAlive = 5
@@ -219,7 +219,7 @@ func runWarp(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoint str
 			continue
 		}
 
-		werr = establishWireguard(l, &conf, tunDev, opts.FwMark, t, opts.AmneziaConfig)
+		werr = establishWireguard(l, &conf, tunDev, opts.FwMark, t, opts.AtomicNoizeConfig)
 		if werr != nil {
 			continue
 		}
@@ -263,8 +263,8 @@ func runWarpInWarp(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoi
 	// Enable trick and keepalive on all peers in config
 	for i, peer := range conf.Peers {
 		peer.Endpoint = endpoints[0]
-		// Only enable old trick functionality if Amnezia is not being used
-		if opts.AmneziaConfig == nil {
+		// Only enable old trick functionality if AtomicNoize is not being used
+		if opts.AtomicNoizeConfig == nil {
 			peer.Trick = true
 		}
 		peer.KeepAlive = 5
@@ -291,7 +291,7 @@ func runWarpInWarp(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoi
 			continue
 		}
 
-		werr = establishWireguard(l.With("gool", "outer"), &conf, tunDev, opts.FwMark, t, opts.AmneziaConfig)
+		werr = establishWireguard(l.With("gool", "outer"), &conf, tunDev, opts.FwMark, t, opts.AtomicNoizeConfig)
 		if werr != nil {
 			continue
 		}
@@ -386,8 +386,8 @@ func runWarpWithPsiphon(ctx context.Context, l *slog.Logger, opts WarpOptions, e
 	// Enable trick and keepalive on all peers in config
 	for i, peer := range conf.Peers {
 		peer.Endpoint = endpoint
-		// Only enable old trick functionality if Amnezia is not being used
-		if opts.AmneziaConfig == nil {
+		// Only enable old trick functionality if AtomicNoize is not being used
+		if opts.AtomicNoizeConfig == nil {
 			peer.Trick = true
 		}
 		peer.KeepAlive = 5
@@ -414,7 +414,7 @@ func runWarpWithPsiphon(ctx context.Context, l *slog.Logger, opts WarpOptions, e
 			continue
 		}
 
-		werr = establishWireguard(l, &conf, tunDev, opts.FwMark, t, opts.AmneziaConfig)
+		werr = establishWireguard(l, &conf, tunDev, opts.FwMark, t, opts.AtomicNoizeConfig)
 		if werr != nil {
 			continue
 		}
@@ -470,3 +470,4 @@ func generateWireguardConfig(i *warp.Identity) wiresocks.Configuration {
 		}},
 	}
 }
+

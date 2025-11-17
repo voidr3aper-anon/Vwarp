@@ -43,24 +43,24 @@ type rootConfig struct {
 	testUrl  string
 	config   string
 	
-	// Amnezia WireGuard configuration
-	amneziaEnable      bool
-	amneziaI1          string
-	amneziaI2          string
-	amneziaI3          string
-	amneziaI4          string
-	amneziaI5          string
-	amneziaS1          int
-	amneziaS2          int
-	amneziaJc          int
-	amneziaJmin        int
-	amneziaJmax        int
-	amneziaJcAfterI1   int
-	amneziaJcBeforeHS  int
-	amneziaJcAfterHS   int
-	amneziaJunkInterval time.Duration
-	amneziaAllowZeroSize bool
-	amneziaHandshakeDelay time.Duration
+	// AtomicNoize WireGuard configuration
+	AtomicNoizeEnable      bool
+	AtomicNoizeI1          string
+	AtomicNoizeI2          string
+	AtomicNoizeI3          string
+	AtomicNoizeI4          string
+	AtomicNoizeI5          string
+	AtomicNoizeS1          int
+	AtomicNoizeS2          int
+	AtomicNoizeJc          int
+	AtomicNoizeJmin        int
+	AtomicNoizeJmax        int
+	AtomicNoizeJcAfterI1   int
+	AtomicNoizeJcBeforeHS  int
+	AtomicNoizeJcAfterHS   int
+	AtomicNoizeJunkInterval time.Duration
+	AtomicNoizeAllowZeroSize bool
+	AtomicNoizeHandshakeDelay time.Duration
 }
 
 func newRootCmd() *rootConfig {
@@ -156,90 +156,90 @@ func newRootCmd() *rootConfig {
 		Value:     ffval.NewValueDefault(&cfg.config, ""),
 	})
 	
-	// Amnezia WireGuard flags
+	// AtomicNoize WireGuard flags
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-enable",
-		Value:    ffval.NewValueDefault(&cfg.amneziaEnable, false),
+		LongName: "atomicnoize-enable",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeEnable, false),
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-i1",
-		Value:    ffval.NewValueDefault(&cfg.amneziaI1, "<b 0xc2000000011419fa4bb3599f336777de79f81ca9a8d80d91eeec000044c635cef024a885dcb66d1420a91a8c427e87d6cf8e08b563932f449412cddf77d3e2594ea1c7a183c238a89e9adb7ffa57c133e55c59bec101634db90afb83f75b19fe703179e26a31902324c73f82d9354e1ed8da39af610afcb27e6590a44341a0828e5a3d2f0e0f7b0945d7bf3402feea0ee6332e19bdf48ffc387a97227aa97b205a485d282cd66d1c384bafd63dc42f822c4df2109db5b5646c458236ddcc01ae1c493482128bc0830c9e1233f0027a0d262f92b49d9d8abd9a9e0341f6e1214761043c021d7aa8c464b9d865f5fbe234e49626e00712031703a3e23ef82975f014ee1e1dc428521dc23ce7c6c13663b19906240b3efe403cf30559d798871557e4e60e86c29ea4504ed4d9bb8b549d0e8acd6c334c39bb8fb42ede68fb2aadf00cfc8bcc12df03602bbd4fe701d64a39f7ced112951a83b1dbbe6cd696dd3f15985c1b9fef72fa8d0319708b633cc4681910843ce753fac596ed9945d8b839aeff8d3bf0449197bd0bb22ab8efd5d63eb4a95db8d3ffc796ed5bcf2f4a136a8a36c7a0c65270d511aebac733e61d414050088a1c3d868fb52bc7e57d3d9fd132d78b740a6ecdc6c24936e92c28672dbe00928d89b891865f885aeb4c4996d50c2bbbb7a99ab5de02ac89b3308e57bcecf13f2da0333d1420e18b66b4c23d625d836b538fc0c221d6bd7f566a31fa292b85be96041d8e0bfe655d5dc1afed23eb8f2b3446561bbee7644325cc98d31cea38b865bdcc507e48c6ebdc7553be7bd6ab963d5a14615c4b81da7081c127c791224853e2d19bafdc0d9f3f3a6de898d14abb0e2bc849917e0a599ed4a541268ad0e60ea4d147dc33d17fa82f22aa505ccb53803a31d10a7ca2fea0b290a52ee92c7bf4aab7cea4e3c07b1989364eed87a3c6ba65188cd349d37ce4eefde9ec43bab4b4dc79e03469c2ad6b902e28e0bbbbf696781ad4edf424ffb35ce0236d373629008f142d04b5e08a124237e03e3149f4cdde92d7fae581a1ac332e26b2c9c1a6bdec5b3a9c7a2a870f7a0c25fc6ce245e029b686e346c6d862ad8df6d9b62474fbc31dbb914711f78074d4441f4e6e9edca3c52315a5c0653856e23f681558d669f4a4e6915bcf42b56ce36cb7dd3983b0b1d6fdf0f8efddb68e7ca0ae9dd4570fe6978fbb524109f6ec957ca61f1767ef74eb803b0f16abd0087cf2d01bc1db1c01d97ac81b3196c934586963fe7cf2d310e0739621e8bd00dc23fded18576d8c8f285d7bb5f43b547af3c76235de8b6f757f817683b2151600b11721219212bf27558edd439e73fce951f61d582320e5f4d6c315c71129b719277fc144bbe8ded25ab6d29b6e189c9bd9b16538faf60cc2aab3c3bb81fc2213657f2dd0ceb9b3b871e1423d8d3e8cc008721ef03b28e0ee7bb66b8f2a2ac01ef88df1f21ed49bf1ce435df31ac34485936172567488812429c269b49ee9e3d99652b51a7a614b7c460bf0d2d64d8349ded7345bedab1ea0a766a8470b1242f38d09f7855a32db39516c2bd4bcc538c52fa3a90c8714d4b006a15d9c7a7d04919a1cab48da7cce0d5de1f9e5f8936cffe469132991c6eb84c5191d1bcf69f70c58d9a7b66846440a9f0eef25ee6ab62715b50ca7bef0bc3013d4b62e1639b5028bdf757454356e9326a4c76dabfb497d451a3a1d2dbd46ec283d255799f72dfe878ae25892e25a2542d3ca9018394d8ca35b53ccd94947a8>"),
-		Usage:    "Amnezia I1 signature packet (CPS format)",
+		LongName: "atomicnoize-i1",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeI1, ""),
+		Usage:    "AtomicNoize I1 signature packet in CPS format (e.g., '<b 0xc200...>'). Required for obfuscation.",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-i2",
-		Value:    ffval.NewValueDefault(&cfg.amneziaI2, "1"),
-		Usage:    "Amnezia I2/H1 signature packet (CPS format)",
+		LongName: "atomicnoize-i2",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeI2, "1"),
+		Usage:    "AtomicNoize I2 signature packet (CPS format or simple number)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-i3",
-		Value:    ffval.NewValueDefault(&cfg.amneziaI3, "2"),
-		Usage:    "Amnezia I3/H2 signature packet (CPS format)",
+		LongName: "atomicnoize-i3",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeI3, "2"),
+		Usage:    "AtomicNoize I3 signature packet (CPS format or simple number)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-i4",
-		Value:    ffval.NewValueDefault(&cfg.amneziaI4, "3"),
-		Usage:    "Amnezia I4/H3 signature packet (CPS format)",
+		LongName: "atomicnoize-i4",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeI4, "3"),
+		Usage:    "AtomicNoize I4 signature packet (CPS format or simple number)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-i5",
-		Value:    ffval.NewValueDefault(&cfg.amneziaI5, "4"),
-		Usage:    "Amnezia I5/H4 signature packet (CPS format)",
+		LongName: "atomicnoize-i5",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeI5, "4"),
+		Usage:    "AtomicNoize I5 signature packet (CPS format or simple number)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-s1",
-		Value:    ffval.NewValueDefault(&cfg.amneziaS1, 0),
-		Usage:    "Amnezia S1 random prefix for Init packets (0-64 bytes)",
+		LongName: "atomicnoize-s1",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeS1, 0),
+		Usage:    "AtomicNoize S1 random prefix for Init packets (0-64 bytes) - disabled for WARP compatibility",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-s2",
-		Value:    ffval.NewValueDefault(&cfg.amneziaS2, 0),
-		Usage:    "Amnezia S2 random prefix for Response packets (0-64 bytes)",
+		LongName: "atomicnoize-s2",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeS2, 0),
+		Usage:    "AtomicNoize S2 random prefix for Response packets (0-64 bytes) - disabled for WARP compatibility",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-jc",
-		Value:    ffval.NewValueDefault(&cfg.amneziaJc, 4),
-		Usage:    "Amnezia Jc number of junk packets (0-10)",
+		LongName: "atomicnoize-jc",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJc, 4),
+		Usage:    "Total number of junk packets to send (0-128)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-jmin",
-		Value:    ffval.NewValueDefault(&cfg.amneziaJmin, 40),
-		Usage:    "Amnezia Jmin minimum junk packet size in bytes",
+		LongName: "atomicnoize-jmin",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJmin, 40),
+		Usage:    "Minimum junk packet size in bytes",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-jmax",
-		Value:    ffval.NewValueDefault(&cfg.amneziaJmax, 70),
-		Usage:    "Amnezia Jmax maximum junk packet size in bytes",
+		LongName: "atomicnoize-jmax",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJmax, 70),
+		Usage:    "Maximum junk packet size in bytes",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-jc-after-i1",
-		Value:    ffval.NewValueDefault(&cfg.amneziaJcAfterI1, 0),
-		Usage:    "Amnezia junk packets to send after I1 packet",
+		LongName: "atomicnoize-jc-after-i1",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJcAfterI1, 0),
+		Usage:    "Number of junk packets to send immediately after I1 packet",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-jc-before-hs",
-		Value:    ffval.NewValueDefault(&cfg.amneziaJcBeforeHS, 0),
-		Usage:    "Amnezia junk packets to send before handshake",
+		LongName: "atomicnoize-jc-before-hs",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJcBeforeHS, 0),
+		Usage:    "Number of junk packets to send before handshake initiation",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-jc-after-hs",
-		Value:    ffval.NewValueDefault(&cfg.amneziaJcAfterHS, 0),
-		Usage:    "Amnezia junk packets to send after handshake",
+		LongName: "atomicnoize-jc-after-hs",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJcAfterHS, 0),
+		Usage:    "Number of junk packets to send after handshake (auto-calculated as Jc - JcBeforeHS - JcAfterI1)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-junk-interval",
-		Value:    ffval.NewValueDefault(&cfg.amneziaJunkInterval, 10*time.Millisecond),
-		Usage:    "Amnezia interval between junk packets",
+		LongName: "atomicnoize-junk-interval",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJunkInterval, 10*time.Millisecond),
+		Usage:    "Time interval between sending junk packets (e.g., 10ms, 50ms)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-allow-zero-size",
-		Value:    ffval.NewValueDefault(&cfg.amneziaAllowZeroSize, false),
-		Usage:    "Amnezia allow zero-size junk packets",
+		LongName: "atomicnoize-allow-zero-size",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeAllowZeroSize, false),
+		Usage:    "Allow zero-size junk packets (may not work with all UDP implementations)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "amnezia-handshake-delay",
-		Value:    ffval.NewValueDefault(&cfg.amneziaHandshakeDelay, 0*time.Millisecond),
-		Usage:    "Amnezia delay before actual handshake after I-sequence",
+		LongName: "atomicnoize-handshake-delay",
+		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeHandshakeDelay, 0*time.Millisecond),
+		Usage:    "Delay before actual WireGuard handshake after I-sequence (e.g., 50ms, 100ms)",
 	})
 	cfg.command = &ff.Command{
 		Name:  appName,
@@ -288,7 +288,7 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 		WireguardConfig: c.wgConf,
 		Reserved:        c.reserved,
 		TestURL:         c.testUrl,
-		AmneziaConfig:   c.buildAmneziaConfig(),
+		AtomicNoizeConfig:   c.buildAtomicNoizeConfig(),
 	}
 
 	switch {
@@ -332,29 +332,31 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 	return nil
 }
 
-// buildAmneziaConfig creates an AmneziaConfig from the CLI flags
-func (c *rootConfig) buildAmneziaConfig() *preflightbind.AmneziaConfig {
-	// Only create config if Amnezia is explicitly enabled
-	if !c.amneziaEnable {
+// buildAtomicNoizeConfig creates an AtomicNoizeConfig from the CLI flags
+func (c *rootConfig) buildAtomicNoizeConfig() *preflightbind.AtomicNoizeConfig {
+	// Only create config if AtomicNoize is explicitly enabled
+	if !c.AtomicNoizeEnable {
 		return nil
 	}
 	
-	return &preflightbind.AmneziaConfig{
-		I1:              c.amneziaI1,
-		I2:              c.amneziaI2,
-		I3:              c.amneziaI3,
-		I4:              c.amneziaI4,
-		I5:              c.amneziaI5,
-		S1:              c.amneziaS1,
-		S2:              c.amneziaS2,
-		Jc:              c.amneziaJc,
-		Jmin:            c.amneziaJmin,
-		Jmax:            c.amneziaJmax,
-		JcAfterI1:       c.amneziaJcAfterI1,
-		JcBeforeHS:      c.amneziaJcBeforeHS,
-		JcAfterHS:       c.amneziaJcAfterHS,
-		JunkInterval:    c.amneziaJunkInterval,
-		AllowZeroSize:   c.amneziaAllowZeroSize,
-		HandshakeDelay:  c.amneziaHandshakeDelay,
+	return &preflightbind.AtomicNoizeConfig{
+		I1:              c.AtomicNoizeI1,
+		I2:              c.AtomicNoizeI2,
+		I3:              c.AtomicNoizeI3,
+		I4:              c.AtomicNoizeI4,
+		I5:              c.AtomicNoizeI5,
+		S1:              c.AtomicNoizeS1,
+		S2:              c.AtomicNoizeS2,
+		Jc:              c.AtomicNoizeJc,
+		Jmin:            c.AtomicNoizeJmin,
+		Jmax:            c.AtomicNoizeJmax,
+		JcAfterI1:       c.AtomicNoizeJcAfterI1,
+		JcBeforeHS:      c.AtomicNoizeJcBeforeHS,
+		JcAfterHS:       c.AtomicNoizeJcAfterHS,
+		JunkInterval:    c.AtomicNoizeJunkInterval,
+		AllowZeroSize:   c.AtomicNoizeAllowZeroSize,
+		HandshakeDelay:  c.AtomicNoizeHandshakeDelay,
 	}
 }
+
+

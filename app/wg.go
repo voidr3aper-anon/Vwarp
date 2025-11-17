@@ -86,7 +86,7 @@ func waitHandshake(ctx context.Context, l *slog.Logger, dev *device.Device) erro
 	return nil
 }
 
-func establishWireguard(l *slog.Logger, conf *wiresocks.Configuration, tunDev wgtun.Device, fwmark uint32, t string, amneziaConfig *preflightbind.AmneziaConfig) error {
+func establishWireguard(l *slog.Logger, conf *wiresocks.Configuration, tunDev wgtun.Device, fwmark uint32, t string, AtomicNoizeConfig *preflightbind.AtomicNoizeConfig) error {
 	// create the IPC message to establish the wireguard conn
 	var request bytes.Buffer
 
@@ -101,11 +101,11 @@ func establishWireguard(l *slog.Logger, conf *wiresocks.Configuration, tunDev wg
 		request.WriteString(fmt.Sprintf("preshared_key=%s\n", peer.PreSharedKey))
 		request.WriteString(fmt.Sprintf("endpoint=%s\n", peer.Endpoint))
 		
-		// Only set trick if Amnezia is not being used
-		if amneziaConfig == nil {
+		// Only set trick if AtomicNoize is not being used
+		if AtomicNoizeConfig == nil {
 			request.WriteString(fmt.Sprintf("trick=%s\n", t))
 		} else {
-			// Set trick to empty/t0 to disable old obfuscation when using Amnezia
+			// Set trick to empty/t0 to disable old obfuscation when using AtomicNoize
 			request.WriteString("trick=t0\n")
 		}
 		
@@ -119,9 +119,9 @@ func establishWireguard(l *slog.Logger, conf *wiresocks.Configuration, tunDev wg
 	// Create the appropriate bind based on configuration
 	var bind conn.Bind = conn.NewDefaultBind()
 	
-	// If Amnezia configuration is provided, wrap the default bind
-	if amneziaConfig != nil {
-		l.Info("using Amnezia WireGuard obfuscation")
+	// If AtomicNoize configuration is provided, wrap the default bind
+	if AtomicNoizeConfig != nil {
+		l.Info("using AtomicNoize WireGuard obfuscation")
 		
 		// Extract port from the first peer endpoint
 		preflightPort := 443 // default fallback
@@ -135,14 +135,14 @@ func establishWireguard(l *slog.Logger, conf *wiresocks.Configuration, tunDev wg
 		}
 		
 		l.Info("using preflight port", "port", preflightPort)
-		amnesiaBind, err := preflightbind.NewWithAmnezia(
+		amnesiaBind, err := preflightbind.NewWithAtomicNoize(
 			bind, // Use the already created bind instead of creating a new one
-			amneziaConfig,
+			AtomicNoizeConfig,
 			preflightPort, // extracted port for preflight packets
 			100*time.Millisecond, // minimum interval between preflights (reduced from 1 second)
 		)
 		if err != nil {
-			l.Error("failed to create Amnezia bind", "error", err)
+			l.Error("failed to create AtomicNoize bind", "error", err)
 			return err
 		}
 		bind = amnesiaBind
@@ -172,3 +172,4 @@ func establishWireguard(l *slog.Logger, conf *wiresocks.Configuration, tunDev wg
 
 	return nil
 }
+
