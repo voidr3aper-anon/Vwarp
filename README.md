@@ -8,7 +8,7 @@ Warp-Plus is an open-source implementation of Cloudflare's Warp, enhanced with P
 
 **Maintainer**: [voidreaper](https://github.com/voidr3aper-anon)
 
-**Check out the telegram channel**: 📱 [Telegram Channel](https://t.me/VoidVerge)
+**Check out the telegram channel**: 📱 [@VoidVerge](https://t.me/VoidVerge)
 
 </div>
 ## 🚀 Quick Start
