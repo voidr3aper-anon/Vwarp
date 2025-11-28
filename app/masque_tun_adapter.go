@@ -9,8 +9,7 @@ import (
 	"github.com/bepass-org/vwarp/wireguard/tun"
 )
 
-// netstackTunAdapter wraps a tun.Device to provide ReadPacket/WritePacket interface
-// Compatible with usque's tunnel maintenance approach
+// netstackTunAdapter wraps a tun.Device to provide packet forwarding interface
 type netstackTunAdapter struct {
 	dev             tun.Device
 	tunnelBufPool   *sync.Pool
@@ -44,8 +43,7 @@ func (n *netstackTunAdapter) WritePacket(pkt []byte) error {
 }
 
 // maintainMasqueTunnel continuously forwards packets between the TUN device and MASQUE
-// Based on usque's MaintainTunnel function
-func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, client *masque.MasqueClient, device *netstackTunAdapter, mtu int) {
+func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.MasqueAdapter, device *netstackTunAdapter, mtu int) {
 	l.Info("Starting MASQUE tunnel packet forwarding")
 
 	// Forward packets from netstack to MASQUE
@@ -64,11 +62,11 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, client *masque.Ma
 
 			packetCount++
 			if packetCount <= 5 || packetCount%100 == 0 {
-				l.Info("TX netstack→MASQUE", "packet", packetCount, "bytes", n)
+				l.Debug("TX netstack→MASQUE", "packet", packetCount, "bytes", n)
 			}
 
 			// Write packet to MASQUE and handle ICMP response
-			icmp, err := client.WriteWithICMP(buf[:n])
+			icmp, err := adapter.WriteWithICMP(buf[:n])
 			if err != nil {
 				l.Error("error writing to MASQUE", "error", err, "packet_size", n)
 				continue
@@ -76,7 +74,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, client *masque.Ma
 
 			// Handle ICMP response if present
 			if len(icmp) > 0 {
-				l.Warn("received ICMP response", "size", len(icmp))
+				l.Debug("received ICMP response", "size", len(icmp))
 				if err := device.WritePacket(icmp); err != nil {
 					l.Error("error writing ICMP to TUN device", "error", err)
 				}
@@ -89,7 +87,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, client *masque.Ma
 		buf := make([]byte, mtu)
 		packetCount := 0
 		for ctx.Err() == nil {
-			n, err := client.Read(buf)
+			n, err := adapter.Read(buf)
 			if err != nil {
 				if ctx.Err() != nil {
 					return
@@ -100,7 +98,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, client *masque.Ma
 
 			packetCount++
 			if packetCount <= 5 || packetCount%100 == 0 {
-				l.Info("RX MASQUE→netstack", "packet", packetCount, "bytes", n)
+				l.Debug("RX MASQUE→netstack", "packet", packetCount, "bytes", n)
 			}
 
 			if err := device.WritePacket(buf[:n]); err != nil {

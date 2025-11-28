@@ -11,8 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/bepass-org/vwarp/masque/usque/api"
+	// "github.com/Diniboy1123/usque/api" // Temporarily disabled - API needs update
 )
 
 // ScanResult represents the result of scanning a single endpoint
@@ -318,39 +317,18 @@ func (s *Scanner) testEndpoint(ctx context.Context, endpoint string) ScanResult 
 	// Test MASQUE connection
 	start := time.Now()
 
-	udpAddr := &net.UDPAddr{
-		IP:   ip,
-		Port: port,
-	}
-
-	// Create context with scan timeout
-	scanCtx, cancel := context.WithTimeout(ctx, s.config.ScanTimeout)
-	defer cancel()
-
 	// Scanner doesn't use noize obfuscation (for speed)
 	// Use placeholder IPs since scanner only tests connection, not data transfer
-	udpConn, ipConn, err := api.CreateMasqueClient(scanCtx, s.config.PrivKey, s.config.PeerPubKey, udpAddr, s.config.SNI, false, nil)
+	// TODO: Fix this - CreateMasqueClient function doesn't exist in current usque API
+	// The MASQUE scanner is temporarily disabled until the API is updated
+	_ = start // prevent unused warning
+
 	result.Latency = time.Since(start)
+	result.Error = fmt.Errorf("MASQUE scanner is temporarily disabled - API needs update")
+	result.Success = false
 
-	if err != nil {
-		if s.config.VerboseChild {
-			s.logger.Debug("connection failed", "endpoint", endpoint, "error", err, "latency", result.Latency)
-		}
-		result.Error = err
-		result.Success = false
-		return result
-	}
-
-	// Connection successful
-	result.Success = true
-	result.HandshakeOK = true
-
-	// Clean up immediately
-	if ipConn != nil {
-		ipConn.Close()
-	}
-	if udpConn != nil {
-		udpConn.Close()
+	if s.config.VerboseChild {
+		s.logger.Debug("MASQUE scanner disabled", "endpoint", endpoint)
 	}
 
 	return result

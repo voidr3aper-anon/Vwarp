@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/netip"
 	"path"
 	"sync"
@@ -31,7 +32,6 @@ type WarpOptions struct {
 	Psiphon            *PsiphonOptions
 	Gool               bool
 	Masque             bool
-	MasqueServer       string
 	MasqueAutoFallback bool // Automatically fallback to WireGuard if MASQUE fails
 	MasquePreferred    bool // Prefer MASQUE over WireGuard when both are available
 	Scan               *wiresocks.ScanOptions
@@ -491,43 +491,42 @@ func runWarpWithPsiphon(ctx context.Context, l *slog.Logger, opts WarpOptions, e
 func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoint string) error {
 	l.Info("running in MASQUE mode")
 
-	// Determine MASQUE server endpoint
+	// Convert endpoint to MASQUE endpoint (port 443)
+	// The endpoint may be from scanner (port 2408) or user-provided (any port)
 	var masqueEndpoint string
-	if opts.MasqueServer == "" {
-		// Use the endpoint as the MASQUE server
-		l.Info("using endpoint as MASQUE server", "endpoint", endpoint)
-		masqueEndpoint = endpoint
+	l.Info("using endpoint as MASQUE server", "endpoint", endpoint)
+	if host, _, err := net.SplitHostPort(endpoint); err == nil {
+		// Successfully split, use the host with port 443
+		masqueEndpoint = net.JoinHostPort(host, "443")
+		l.Debug("Converted endpoint to MASQUE endpoint", "from", endpoint, "to", masqueEndpoint)
 	} else {
-		// Parse the provided MASQUE server URL
-		masqueEndpoint = opts.MasqueServer
-		if len(masqueEndpoint) > 8 && masqueEndpoint[:8] == "https://" {
-			masqueEndpoint = masqueEndpoint[8:]
-		} else if len(masqueEndpoint) > 7 && masqueEndpoint[:7] == "http://" {
-			masqueEndpoint = masqueEndpoint[7:]
-		}
+		// No port specified, assume it's just a host, add port 443
+		masqueEndpoint = net.JoinHostPort(endpoint, "443")
+		l.Debug("Added MASQUE port to endpoint", "from", endpoint, "to", masqueEndpoint)
 	}
 
-	// Auto-register and create MASQUE client
-	// Don't override endpoint - let it use the endpoint from the config
+	// Create MASQUE adapter using usque library
 	masqueConfigPath := path.Join(opts.CacheDir, "masque_config.json")
-	client, err := masque.AutoLoadOrRegisterWithOptions(ctx, masque.AutoRegisterOptions{
+	l.Debug("Creating MASQUE adapter", "masqueEndpoint", masqueEndpoint, "configPath", masqueConfigPath)
+	adapter, err := masque.NewMasqueAdapter(ctx, masque.AdapterConfig{
 		ConfigPath: masqueConfigPath,
 		DeviceName: "vwarp-masque",
+		Endpoint:   masqueEndpoint,
 		Logger:     l,
+		License:    opts.License,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to establish MASQUE connection: %w", err)
 	}
-	defer client.Close()
+	defer adapter.Close()
 
 	l.Info("MASQUE tunnel established successfully")
 
 	// Get tunnel addresses
-	ipv4, ipv6 := client.GetLocalAddresses()
+	ipv4, ipv6 := adapter.GetLocalAddresses()
 	l.Info("MASQUE tunnel addresses", "ipv4", ipv4, "ipv6", ipv6)
 
-	// Create a TUN device configuration for the MASQUE tunnel
-	// The MASQUE client provides IP-level Read/Write, so we can create a netstack on top
+	// Create TUN device configuration for the MASQUE tunnel
 	tunAddresses := []netip.Addr{}
 	if ipv4 != "" {
 		if addr, err := netip.ParseAddr(ipv4); err == nil {
@@ -544,14 +543,10 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 		return errors.New("no valid tunnel addresses received from MASQUE")
 	}
 
-	// Use Cloudflare's internal DNS servers that work with WARP
-	// These should be properly routed through the tunnel
-	dnsServers := []netip.Addr{
-		netip.MustParseAddr("1.1.1.1"),
-		netip.MustParseAddr("1.0.0.1"),
-	}
+	// Use DNS servers - respect user's choice
+	dnsServers := []netip.Addr{opts.DnsAddr}
 
-	// Create netstack TUN - it creates its own device
+	// Create netstack TUN
 	tunDev, tnet, err := netstack.CreateNetTUN(tunAddresses, dnsServers, singleMTU)
 	if err != nil {
 		return fmt.Errorf("failed to create netstack: %w", err)
@@ -559,16 +554,15 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 
 	l.Info("netstack created on MASQUE tunnel")
 
-	// Use proper tunnel maintenance like usque does
 	// Create adapter for the netstack device
-	adapter := &netstackTunAdapter{
+	tunAdapter := &netstackTunAdapter{
 		dev:             tunDev,
 		tunnelBufPool:   &sync.Pool{New: func() interface{} { buf := make([][]byte, 1); return &buf }},
 		tunnelSizesPool: &sync.Pool{New: func() interface{} { sizes := make([]int, 1); return &sizes }},
 	}
 
 	// Start tunnel maintenance goroutine
-	go maintainMasqueTunnel(ctx, l, client, adapter, singleMTU)
+	go maintainMasqueTunnel(ctx, l, adapter, tunAdapter, singleMTU)
 
 	// Test connectivity
 	if err := usermodeTunTest(ctx, l, tnet, opts.TestURL); err != nil {

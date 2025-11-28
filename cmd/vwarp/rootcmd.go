@@ -34,7 +34,6 @@ type rootConfig struct {
 	gool               bool
 	psiphon            bool
 	masque             bool
-	masqueServer       string
 	masqueAutoFallback bool
 	masquePreferred    bool
 	country            string
@@ -123,11 +122,6 @@ func newRootCmd() *rootConfig {
 		LongName: "masque",
 		Value:    ffval.NewValueDefault(&cfg.masque, false),
 		Usage:    "enable MASQUE mode (connect to warp via MASQUE proxy)",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "masque-server",
-		Value:    ffval.NewValueDefault(&cfg.masqueServer, ""),
-		Usage:    "MASQUE proxy server URL (e.g., https://masque.example.com)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
 		LongName: "masque-auto-fallback",
@@ -317,9 +311,9 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 		fatal(l, errors.New("can't use masque-preferred and cfon at the same time"))
 	}
 
-	if c.masque && c.masqueServer == "" {
-		// If no masque server is provided, scan for one
-		l.Info("no masque server specified, scanning for endpoints...")
+	if c.masque && c.endpoint == "" {
+		// If no endpoint is provided in MASQUE mode, scan for one
+		l.Info("no endpoint specified, scanning for endpoints...")
 		c.scan = true
 	}
 
@@ -348,7 +342,6 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 		DnsAddr:            dnsAddr,
 		Gool:               c.gool,
 		Masque:             c.masque,
-		MasqueServer:       c.masqueServer,
 		MasqueAutoFallback: c.masqueAutoFallback,
 		MasquePreferred:    c.masquePreferred,
 		FwMark:             c.fwmark,
@@ -385,26 +378,14 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 		var addrPort netip.AddrPort
 		var err error
 
-		if c.masque {
-			// For MASQUE mode, use MASQUE endpoints
-			addrPort, err = randomMasqueEndpoint(c.v4, c.v6)
-		} else {
-			// For normal mode, use WireGuard endpoints
-			addrPort, err = warp.RandomWarpEndpoint(c.v4, c.v6)
-		}
+		// Use WireGuard endpoints for both WARP and MASQUE scanning
+		// MASQUE will convert port 2408 -> 443 in runWarpWithMasque
+		addrPort, err = warp.RandomWarpEndpoint(c.v4, c.v6)
 
 		if err != nil {
 			fatal(l, err)
 		}
 		opts.Endpoint = addrPort.String()
-
-		// For MASQUE, also set the server if not provided
-		if c.masque && c.masqueServer == "" {
-			opts.MasqueServer = fmt.Sprintf("https://%s", addrPort.String())
-		}
-	} else if c.masque && c.masqueServer == "" {
-		// If endpoint is set but masque server isn't, use endpoint as server
-		opts.MasqueServer = fmt.Sprintf("https://%s", opts.Endpoint)
 	}
 
 	go func() {

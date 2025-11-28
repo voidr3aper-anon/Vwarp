@@ -9,21 +9,21 @@ import (
 	"github.com/bepass-org/vwarp/proxy/pkg/statute"
 )
 
-// MasqueDialer wraps a MASQUE client to provide ProxyDialFunc functionality
+// MasqueDialer wraps a MASQUE adapter to provide ProxyDialFunc functionality
 type MasqueDialer struct {
-	client       *masque.MasqueClient
+	adapter      *masque.MasqueAdapter
 	fallbackDial statute.ProxyDialFunc
 	logger       *slog.Logger
 }
 
 // NewMasqueDialer creates a new MASQUE-aware dialer
-func NewMasqueDialer(client *masque.MasqueClient, logger *slog.Logger) *MasqueDialer {
+func NewMasqueDialer(adapter *masque.MasqueAdapter, logger *slog.Logger) *MasqueDialer {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	return &MasqueDialer{
-		client:       client,
+		adapter:      adapter,
 		fallbackDial: statute.DefaultProxyDial(),
 		logger:       logger,
 	}
@@ -31,8 +31,8 @@ func NewMasqueDialer(client *masque.MasqueClient, logger *slog.Logger) *MasqueDi
 
 // DialContext implements the ProxyDialFunc interface using MASQUE
 func (m *MasqueDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	if m.client == nil {
-		m.logger.Debug("MASQUE client not available, using fallback", "address", address)
+	if m.adapter == nil {
+		m.logger.Debug("MASQUE adapter not available, using fallback", "address", address)
 		return m.fallbackDial(ctx, network, address)
 	}
 
@@ -40,10 +40,10 @@ func (m *MasqueDialer) DialContext(ctx context.Context, network, address string)
 	case "tcp", "tcp4", "tcp6":
 		m.logger.Debug("Attempting MASQUE TCP connection", "address", address)
 
-		// For now, we'll use the fallback since we need to implement
-		// the MASQUE client's DialContext method properly
-		// TODO: Implement proper MASQUE dialing
-		m.logger.Debug("MASQUE TCP dialing not yet fully implemented, using fallback")
+		// MASQUE provides IP-level tunneling, TCP is handled at a higher layer
+		// For now, we'll use the fallback
+		// TODO: Implement proper TCP-over-MASQUE if needed
+		m.logger.Debug("MASQUE TCP dialing handled by netstack, using fallback for direct dial")
 		return m.fallbackDial(ctx, network, address)
 
 	default:
@@ -53,30 +53,30 @@ func (m *MasqueDialer) DialContext(ctx context.Context, network, address string)
 	}
 }
 
-// WithMasqueClient adds MASQUE support to the mixed proxy
-func WithMasqueClient(client *masque.MasqueClient, logger *slog.Logger) Option {
+// WithMasqueAdapter adds MASQUE support to the mixed proxy
+func WithMasqueAdapter(adapter *masque.MasqueAdapter, logger *slog.Logger) Option {
 	return func(p *Proxy) {
-		masqueDialer := NewMasqueDialer(client, logger)
+		masqueDialer := NewMasqueDialer(adapter, logger)
 		p.userDialFunc = masqueDialer.DialContext
 
 		if logger != nil {
-			logger.Info("MASQUE client integrated with proxy server")
+			logger.Info("MASQUE adapter integrated with proxy server")
 		}
 	}
 }
 
-// WithMasqueAutoSetup automatically sets up MASQUE client with registration
-func WithMasqueAutoSetup(ctx context.Context, options masque.AutoRegisterOptions) Option {
+// WithMasqueAutoSetup automatically sets up MASQUE adapter with registration
+func WithMasqueAutoSetup(ctx context.Context, config masque.AdapterConfig) Option {
 	return func(p *Proxy) {
-		client, err := masque.AutoLoadOrRegisterWithOptions(ctx, options)
+		adapter, err := masque.NewMasqueAdapter(ctx, config)
 		if err != nil {
-			p.logger.Error("Failed to setup MASQUE client", "error", err)
+			p.logger.Error("Failed to setup MASQUE adapter", "error", err)
 			return
 		}
 
-		masqueDialer := NewMasqueDialer(client, options.Logger)
+		masqueDialer := NewMasqueDialer(adapter, config.Logger)
 		p.userDialFunc = masqueDialer.DialContext
 
-		p.logger.Info("MASQUE client auto-configured and integrated with proxy server")
+		p.logger.Info("MASQUE adapter auto-configured and integrated with proxy server")
 	}
 }
