@@ -24,24 +24,28 @@ type rootConfig struct {
 	flags   *ff.FlagSet
 	command *ff.Command
 
-	verbose  bool
-	v4       bool
-	v6       bool
-	bind     string
-	endpoint string
-	key      string
-	dns      string
-	gool     bool
-	psiphon  bool
-	country  string
-	scan     bool
-	rtt      time.Duration
-	cacheDir string
-	fwmark   uint32
-	reserved string
-	wgConf   string
-	testUrl  string
-	config   string
+	verbose            bool
+	v4                 bool
+	v6                 bool
+	bind               string
+	endpoint           string
+	key                string
+	dns                string
+	gool               bool
+	psiphon            bool
+	masque             bool
+	masqueServer       string
+	masqueAutoFallback bool
+	masquePreferred    bool
+	country            string
+	scan               bool
+	rtt                time.Duration
+	cacheDir           string
+	fwmark             uint32
+	reserved           string
+	wgConf             string
+	testUrl            string
+	config             string
 
 	// AtomicNoize WireGuard configuration
 	AtomicNoizeEnable         bool
@@ -78,8 +82,9 @@ func newRootCmd() *rootConfig {
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
 		ShortName: '4',
+		LongName:  "ipv4",
 		Value:     ffval.NewValueDefault(&cfg.v4, false),
-		Usage:     "only use IPv4 for random warp endpoint",
+		Usage:     "only use IPv4 for random warp/MASQUE endpoint",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
 		ShortName: '6',
@@ -113,6 +118,26 @@ func newRootCmd() *rootConfig {
 		LongName: "gool",
 		Value:    ffval.NewValueDefault(&cfg.gool, false),
 		Usage:    "enable gool mode (warp in warp)",
+	})
+	cfg.flags.AddFlag(ff.FlagConfig{
+		LongName: "masque",
+		Value:    ffval.NewValueDefault(&cfg.masque, false),
+		Usage:    "enable MASQUE mode (connect to warp via MASQUE proxy)",
+	})
+	cfg.flags.AddFlag(ff.FlagConfig{
+		LongName: "masque-server",
+		Value:    ffval.NewValueDefault(&cfg.masqueServer, ""),
+		Usage:    "MASQUE proxy server URL (e.g., https://masque.example.com)",
+	})
+	cfg.flags.AddFlag(ff.FlagConfig{
+		LongName: "masque-auto-fallback",
+		Value:    ffval.NewValueDefault(&cfg.masqueAutoFallback, false),
+		Usage:    "automatically fallback to WireGuard if MASQUE fails",
+	})
+	cfg.flags.AddFlag(ff.FlagConfig{
+		LongName: "masque-preferred",
+		Value:    ffval.NewValueDefault(&cfg.masquePreferred, false),
+		Usage:    "prefer MASQUE over WireGuard (with automatic fallback)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
 		LongName: "cfon",
@@ -268,6 +293,36 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 		fatal(l, errors.New("can't use cfon and gool at the same time"))
 	}
 
+	if c.masque && c.gool {
+		fatal(l, errors.New("can't use masque and gool at the same time"))
+	}
+
+	if c.masque && c.psiphon {
+		fatal(l, errors.New("can't use masque and cfon at the same time"))
+	}
+
+	if c.masque && c.masquePreferred {
+		fatal(l, errors.New("can't use masque and masque-preferred at the same time"))
+	}
+
+	if c.masqueAutoFallback && !c.masque {
+		fatal(l, errors.New("masque-auto-fallback requires masque mode to be enabled"))
+	}
+
+	if c.masquePreferred && c.gool {
+		fatal(l, errors.New("can't use masque-preferred and gool at the same time"))
+	}
+
+	if c.masquePreferred && c.psiphon {
+		fatal(l, errors.New("can't use masque-preferred and cfon at the same time"))
+	}
+
+	if c.masque && c.masqueServer == "" {
+		// If no masque server is provided, scan for one
+		l.Info("no masque server specified, scanning for endpoints...")
+		c.scan = true
+	}
+
 	if c.v4 && c.v6 {
 		fatal(l, errors.New("can't force v4 and v6 at the same time"))
 	}
@@ -287,17 +342,21 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 	}
 
 	opts := app.WarpOptions{
-		Bind:              bindAddrPort,
-		Endpoint:          c.endpoint,
-		License:           c.key,
-		DnsAddr:           dnsAddr,
-		Gool:              c.gool,
-		FwMark:            c.fwmark,
-		WireguardConfig:   c.wgConf,
-		Reserved:          c.reserved,
-		TestURL:           c.testUrl,
-		AtomicNoizeConfig: c.buildAtomicNoizeConfig(),
-		ProxyAddress:      c.proxyAddress,
+		Bind:               bindAddrPort,
+		Endpoint:           c.endpoint,
+		License:            c.key,
+		DnsAddr:            dnsAddr,
+		Gool:               c.gool,
+		Masque:             c.masque,
+		MasqueServer:       c.masqueServer,
+		MasqueAutoFallback: c.masqueAutoFallback,
+		MasquePreferred:    c.masquePreferred,
+		FwMark:             c.fwmark,
+		WireguardConfig:    c.wgConf,
+		Reserved:           c.reserved,
+		TestURL:            c.testUrl,
+		AtomicNoizeConfig:  c.buildAtomicNoizeConfig(),
+		ProxyAddress:       c.proxyAddress,
 	}
 
 	switch {
@@ -321,13 +380,31 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 		opts.Scan = &wiresocks.ScanOptions{V4: c.v4, V6: c.v6, MaxRTT: c.rtt}
 	}
 
-	// If the endpoint is not set, choose a random warp endpoint
+	// If the endpoint is not set, choose a random endpoint
 	if opts.Endpoint == "" {
-		addrPort, err := warp.RandomWarpEndpoint(c.v4, c.v6)
+		var addrPort netip.AddrPort
+		var err error
+
+		if c.masque {
+			// For MASQUE mode, use MASQUE endpoints
+			addrPort, err = randomMasqueEndpoint(c.v4, c.v6)
+		} else {
+			// For normal mode, use WireGuard endpoints
+			addrPort, err = warp.RandomWarpEndpoint(c.v4, c.v6)
+		}
+
 		if err != nil {
 			fatal(l, err)
 		}
 		opts.Endpoint = addrPort.String()
+
+		// For MASQUE, also set the server if not provided
+		if c.masque && c.masqueServer == "" {
+			opts.MasqueServer = fmt.Sprintf("https://%s", addrPort.String())
+		}
+	} else if c.masque && c.masqueServer == "" {
+		// If endpoint is set but masque server isn't, use endpoint as server
+		opts.MasqueServer = fmt.Sprintf("https://%s", opts.Endpoint)
 	}
 
 	go func() {

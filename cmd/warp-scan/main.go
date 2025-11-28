@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/bepass-org/vwarp/ipscanner"
+	"github.com/bepass-org/vwarp/masque"
 	"github.com/bepass-org/vwarp/warp"
 
 	"github.com/carlmjohnson/versioninfo"
@@ -57,6 +58,9 @@ type config struct {
 	OutputFile       string
 	OutputJSON       bool
 	ShowVersion      bool
+	// MASQUE-specific options
+	EnableMasque bool
+	MasqueOnly   bool
 }
 
 func main() {
@@ -131,6 +135,9 @@ func parseConfig(args []string, stderr io.Writer) (*config, error) {
 	fs.StringVar(&cfg.OutputFile, 'o', "output", "", "Path to save the output. Prints to stdout if empty.")
 	fs.BoolVar(&cfg.OutputJSON, 0, "json", "Output results in JSON format.")
 	fs.BoolVar(&cfg.ShowVersion, 0, "version", "Display version information.")
+	// MASQUE flags
+	fs.BoolVar(&cfg.EnableMasque, 0, "masque", "Include MASQUE endpoints in the scan.")
+	fs.BoolVar(&cfg.MasqueOnly, 0, "masque-only", "Scan only MASQUE endpoints (excludes WireGuard endpoints).")
 
 	if err := ff.Parse(fs, args, ff.WithEnvVarPrefix("WARP")); err != nil {
 		if errors.Is(err, ff.ErrHelp) {
@@ -269,6 +276,9 @@ func buildScanner(cfg *config, logger *slog.Logger) (*ipscanner.IPScanner, error
 		ipscanner.WithConcurrentScanners(cfg.Concurrency),
 		ipscanner.WithScanTimeout(cfg.ScanTimeout),
 		ipscanner.WithStopOnFirstGoodIPs(cfg.StopOnCount),
+		// MASQUE-specific options
+		ipscanner.WithEnableMasqueScanning(cfg.EnableMasque),
+		ipscanner.WithMasqueOnly(cfg.MasqueOnly),
 	}
 
 	// Handle the dedicated port test mode
@@ -293,8 +303,37 @@ func buildScanner(cfg *config, logger *slog.Logger) (*ipscanner.IPScanner, error
 		userProvidedEndpoints := len(cfg.Endpoints) > 0
 
 		if !cfg.NoDefaultCidrs && !userProvidedCidrs && !userProvidedEndpoints {
-			// No user input -> use default WARP CIDR list
-			allCidrs = append(allCidrs, warp.WarpPrefixes()...)
+			if cfg.MasqueOnly {
+				// Use MASQUE CIDR ranges
+				logger.Info("Using MASQUE endpoint ranges for scanning")
+				for _, cidr := range masque.DefaultIPv4Ranges() {
+					if p, err := netip.ParsePrefix(cidr); err == nil && cfg.UseIPv4 {
+						allCidrs = append(allCidrs, p)
+					}
+				}
+				for _, cidr := range masque.DefaultIPv6Ranges() {
+					if p, err := netip.ParsePrefix(cidr); err == nil && cfg.UseIPv6 {
+						allCidrs = append(allCidrs, p)
+					}
+				}
+			} else if cfg.EnableMasque {
+				// Use both WARP and MASQUE CIDR lists
+				logger.Info("Using both WARP and MASQUE endpoint ranges for scanning")
+				allCidrs = append(allCidrs, warp.WarpPrefixes()...)
+				for _, cidr := range masque.DefaultIPv4Ranges() {
+					if p, err := netip.ParsePrefix(cidr); err == nil && cfg.UseIPv4 {
+						allCidrs = append(allCidrs, p)
+					}
+				}
+				for _, cidr := range masque.DefaultIPv6Ranges() {
+					if p, err := netip.ParsePrefix(cidr); err == nil && cfg.UseIPv6 {
+						allCidrs = append(allCidrs, p)
+					}
+				}
+			} else {
+				// No user input -> use default WARP CIDR list
+				allCidrs = append(allCidrs, warp.WarpPrefixes()...)
+			}
 		}
 
 		// Append any user-provided CIDRs (explicit user CIDRs take precedence)

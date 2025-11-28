@@ -8,8 +8,10 @@ import (
 	"log/slog"
 	"net/netip"
 	"path"
+	"sync"
 
 	"github.com/bepass-org/vwarp/iputils"
+	"github.com/bepass-org/vwarp/masque"
 	"github.com/bepass-org/vwarp/psiphon"
 	"github.com/bepass-org/vwarp/warp"
 	"github.com/bepass-org/vwarp/wireguard/preflightbind"
@@ -18,24 +20,28 @@ import (
 	"github.com/bepass-org/vwarp/wiresocks"
 )
 
-const singleMTU = 1330
+const singleMTU = 1200 // MASQUE/QUIC tunnel MTU (accounting for HTTP/3 overhead)
 const doubleMTU = 1280 // minimum mtu for IPv6, may cause frag reassembly somewhere
 
 type WarpOptions struct {
-	Bind              netip.AddrPort
-	Endpoint          string
-	License           string
-	DnsAddr           netip.Addr
-	Psiphon           *PsiphonOptions
-	Gool              bool
-	Scan              *wiresocks.ScanOptions
-	CacheDir          string
-	FwMark            uint32
-	WireguardConfig   string
-	Reserved          string
-	TestURL           string
-	AtomicNoizeConfig *preflightbind.AtomicNoizeConfig
-	ProxyAddress      string
+	Bind               netip.AddrPort
+	Endpoint           string
+	License            string
+	DnsAddr            netip.Addr
+	Psiphon            *PsiphonOptions
+	Gool               bool
+	Masque             bool
+	MasqueServer       string
+	MasqueAutoFallback bool // Automatically fallback to WireGuard if MASQUE fails
+	MasquePreferred    bool // Prefer MASQUE over WireGuard when both are available
+	Scan               *wiresocks.ScanOptions
+	CacheDir           string
+	FwMark             uint32
+	WireguardConfig    string
+	Reserved           string
+	TestURL            string
+	AtomicNoizeConfig  *preflightbind.AtomicNoizeConfig
+	ProxyAddress       string
 }
 
 type PsiphonOptions struct {
@@ -53,6 +59,14 @@ func RunWarp(ctx context.Context, l *slog.Logger, opts WarpOptions) error {
 
 	if opts.Psiphon != nil && opts.Gool {
 		return errors.New("can't use psiphon and gool at the same time")
+	}
+
+	if opts.Masque && opts.Gool {
+		return errors.New("can't use masque and gool at the same time")
+	}
+
+	if opts.Masque && opts.Psiphon != nil {
+		return errors.New("can't use masque and psiphon at the same time")
 	}
 
 	if opts.Psiphon != nil && opts.Psiphon.Country == "" {
@@ -92,6 +106,33 @@ func RunWarp(ctx context.Context, l *slog.Logger, opts WarpOptions) error {
 
 	var warpErr error
 	switch {
+	case opts.Masque:
+		l.Info("running in MASQUE mode")
+		// run warp through MASQUE proxy
+		warpErr = runWarpWithMasque(ctx, l, opts, endpoints[0])
+
+		// Auto-fallback to WireGuard if MASQUE fails and fallback is enabled
+		if warpErr != nil && opts.MasqueAutoFallback {
+			l.Warn("MASQUE connection failed, attempting WireGuard fallback", "error", warpErr)
+			warpErr = runWarp(ctx, l, opts, endpoints[0])
+			if warpErr == nil {
+				l.Info("WireGuard fallback successful")
+			}
+		}
+	case opts.MasquePreferred:
+		// Try MASQUE first, fallback to WireGuard automatically
+		l.Info("running in MASQUE-preferred mode")
+		warpErr = runWarpWithMasque(ctx, l, opts, endpoints[0])
+
+		if warpErr != nil {
+			l.Warn("MASQUE preferred but failed, falling back to WireGuard", "error", warpErr)
+			warpErr = runWarp(ctx, l, opts, endpoints[0])
+			if warpErr == nil {
+				l.Info("WireGuard fallback successful")
+			}
+		} else {
+			l.Info("MASQUE preferred mode successful")
+		}
 	case opts.Psiphon != nil:
 		l.Info("running in Psiphon (cfon) mode")
 		// run primary warp on a random tcp port and run psiphon on bind address
@@ -444,6 +485,109 @@ func runWarpWithPsiphon(ctx context.Context, l *slog.Logger, opts WarpOptions, e
 	}
 
 	l.Info("serving proxy", "address", opts.Bind)
+	return nil
+}
+
+func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoint string) error {
+	l.Info("running in MASQUE mode")
+
+	// Determine MASQUE server endpoint
+	var masqueEndpoint string
+	if opts.MasqueServer == "" {
+		// Use the endpoint as the MASQUE server
+		l.Info("using endpoint as MASQUE server", "endpoint", endpoint)
+		masqueEndpoint = endpoint
+	} else {
+		// Parse the provided MASQUE server URL
+		masqueEndpoint = opts.MasqueServer
+		if len(masqueEndpoint) > 8 && masqueEndpoint[:8] == "https://" {
+			masqueEndpoint = masqueEndpoint[8:]
+		} else if len(masqueEndpoint) > 7 && masqueEndpoint[:7] == "http://" {
+			masqueEndpoint = masqueEndpoint[7:]
+		}
+	}
+
+	// Auto-register and create MASQUE client
+	// Don't override endpoint - let it use the endpoint from the config
+	masqueConfigPath := path.Join(opts.CacheDir, "masque_config.json")
+	client, err := masque.AutoLoadOrRegisterWithOptions(ctx, masque.AutoRegisterOptions{
+		ConfigPath: masqueConfigPath,
+		DeviceName: "vwarp-masque",
+		Logger:     l,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to establish MASQUE connection: %w", err)
+	}
+	defer client.Close()
+
+	l.Info("MASQUE tunnel established successfully")
+
+	// Get tunnel addresses
+	ipv4, ipv6 := client.GetLocalAddresses()
+	l.Info("MASQUE tunnel addresses", "ipv4", ipv4, "ipv6", ipv6)
+
+	// Create a TUN device configuration for the MASQUE tunnel
+	// The MASQUE client provides IP-level Read/Write, so we can create a netstack on top
+	tunAddresses := []netip.Addr{}
+	if ipv4 != "" {
+		if addr, err := netip.ParseAddr(ipv4); err == nil {
+			tunAddresses = append(tunAddresses, addr)
+		}
+	}
+	if ipv6 != "" {
+		if addr, err := netip.ParseAddr(ipv6); err == nil {
+			tunAddresses = append(tunAddresses, addr)
+		}
+	}
+
+	if len(tunAddresses) == 0 {
+		return errors.New("no valid tunnel addresses received from MASQUE")
+	}
+
+	// Use Cloudflare's internal DNS servers that work with WARP
+	// These should be properly routed through the tunnel
+	dnsServers := []netip.Addr{
+		netip.MustParseAddr("1.1.1.1"),
+		netip.MustParseAddr("1.0.0.1"),
+	}
+
+	// Create netstack TUN - it creates its own device
+	tunDev, tnet, err := netstack.CreateNetTUN(tunAddresses, dnsServers, singleMTU)
+	if err != nil {
+		return fmt.Errorf("failed to create netstack: %w", err)
+	}
+
+	l.Info("netstack created on MASQUE tunnel")
+
+	// Use proper tunnel maintenance like usque does
+	// Create adapter for the netstack device
+	adapter := &netstackTunAdapter{
+		dev:             tunDev,
+		tunnelBufPool:   &sync.Pool{New: func() interface{} { buf := make([][]byte, 1); return &buf }},
+		tunnelSizesPool: &sync.Pool{New: func() interface{} { sizes := make([]int, 1); return &sizes }},
+	}
+
+	// Start tunnel maintenance goroutine
+	go maintainMasqueTunnel(ctx, l, client, adapter, singleMTU)
+
+	// Test connectivity
+	if err := usermodeTunTest(ctx, l, tnet, opts.TestURL); err != nil {
+		l.Warn("connectivity test failed", "error", err)
+		// Don't fail completely, just warn
+	} else {
+		l.Info("MASQUE connectivity test passed")
+	}
+
+	// Start SOCKS proxy on the netstack
+	actualBind, err := wiresocks.StartProxy(ctx, l, tnet, opts.Bind)
+	if err != nil {
+		return fmt.Errorf("failed to start proxy: %w", err)
+	}
+
+	l.Info("serving proxy via MASQUE tunnel", "address", actualBind)
+
+	// Keep running until context is cancelled
+	<-ctx.Done()
 	return nil
 }
 

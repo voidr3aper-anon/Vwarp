@@ -600,4 +600,34 @@ func (i *IPScanner) GetAvailableIPs() []statute.IPInfo {
 	return nil
 }
 
+// WithEnableMasqueScanning enables MASQUE endpoint scanning alongside WireGuard
+func WithEnableMasqueScanning(enable bool) Option {
+	return func(i *IPScanner) {
+		i.options.EnableMasqueScanning = enable
+		if enable && len(i.options.MasqueScanPorts) == 0 {
+			i.options.MasqueScanPorts = i.options.GetDefaultMasquePorts()
+		}
+	}
+}
+
+// WithMasqueOnly scans only MASQUE endpoints (excludes WireGuard)
+func WithMasqueOnly(masqueOnly bool) Option {
+	return func(i *IPScanner) {
+		i.options.MasqueOnly = masqueOnly
+		if masqueOnly {
+			i.options.EnableMasqueScanning = true
+			if len(i.options.MasqueScanPorts) == 0 {
+				i.options.MasqueScanPorts = i.options.GetDefaultMasquePorts()
+			}
+		}
+	}
+}
+
+// WithMasquePorts sets the ports to scan for MASQUE endpoints
+func WithMasquePorts(ports []uint16) Option {
+	return func(i *IPScanner) {
+		i.options.MasqueScanPorts = ports
+	}
+}
+
 type IPInfo = statute.IPInfo
