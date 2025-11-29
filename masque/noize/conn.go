@@ -139,15 +139,15 @@ func LightObfuscationConfig() *NoizeConfig {
 	return &NoizeConfig{
 		I1:              "",    // No signature packet to keep it simple
 		FragmentInitial: false, // Don't fragment to avoid breaking handshake
-		PaddingMin:      4,
-		PaddingMax:      12,
+		PaddingMin:      0,
+		PaddingMax:      0,
 		RandomPadding:   true,
-		Jc:              0, // No junk packets
-		JcBeforeHS:      0,
+		Jc:              12, // No junk packets
+		JcBeforeHS:      6,
 		JcAfterI1:       0,
-		JcDuringHS:      0,
+		JcDuringHS:      10,
 		JcAfterHS:       0,
-		HandshakeDelay:  0,  // No delay
+		HandshakeDelay:  3,  // No delay
 		MimicProtocol:   "", // No protocol mimicry
 	}
 }

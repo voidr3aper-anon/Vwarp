@@ -31,8 +31,9 @@ const (
 	// DefaultMasqueSNI is the default SNI for Cloudflare MASQUE
 	DefaultMasqueSNI = "consumer-masque.cloudflareclient.com"
 
-	// ConnectURI is the MASQUE Connect-IP URI template
-	ConnectURI = "https://" + DefaultMasqueSNI + "/.well-known/masque/ip/{target_host}/{target_port}/"
+	// ConnectURI is the MASQUE Connect-IP URI (simple tunnel without IP flow forwarding)
+	// Must not have template variables to avoid "IP flow forwarding not supported" error
+	ConnectURI = "https://cloudflareaccess.com"
 )
 
 // MasqueAdapter bridges usque library to vwarp's infrastructure

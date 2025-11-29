@@ -22,7 +22,7 @@ import (
 	"github.com/bepass-org/vwarp/wiresocks"
 )
 
-const singleMTU = 1200 // MASQUE/QUIC tunnel MTU (accounting for HTTP/3 overhead)
+const singleMTU = 1280 // MASQUE/QUIC tunnel MTU (standard MTU matching usque)
 const doubleMTU = 1280 // minimum mtu for IPv6, may cause frag reassembly somewhere
 
 type WarpOptions struct {
