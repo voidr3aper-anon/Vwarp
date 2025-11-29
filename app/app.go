@@ -33,9 +33,9 @@ type WarpOptions struct {
 	Psiphon            *PsiphonOptions
 	Gool               bool
 	Masque             bool
-	MasqueAutoFallback bool // Automatically fallback to WireGuard if MASQUE fails
-	MasquePreferred    bool // Prefer MASQUE over WireGuard when both are available
-	MasqueNoize        bool // Enable MASQUE noize obfuscation
+	MasqueAutoFallback bool   // Automatically fallback to WireGuard if MASQUE fails
+	MasquePreferred    bool   // Prefer MASQUE over WireGuard when both are available
+	MasqueNoize        bool   // Enable MASQUE noize obfuscation
 	MasqueNoizePreset  string // Noize preset: light, medium, heavy, stealth, gfw
 	Scan               *wiresocks.ScanOptions
 	CacheDir           string
@@ -511,7 +511,7 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 	// Create MASQUE adapter using usque library
 	masqueConfigPath := path.Join(opts.CacheDir, "masque_config.json")
 	l.Debug("Creating MASQUE adapter", "masqueEndpoint", masqueEndpoint, "configPath", masqueConfigPath)
-	
+
 	// Configure noize obfuscation if enabled
 	var noizeConfig *noize.NoizeConfig
 	if opts.MasqueNoize {
@@ -519,9 +519,9 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 		if preset == "" {
 			preset = "medium"
 		}
-		
+
 		l.Info("Enabling MASQUE noize obfuscation", "preset", preset)
-		
+
 		switch preset {
 		case "minimal":
 			noizeConfig = noize.MinimalObfuscationConfig()
@@ -543,7 +543,7 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 			noizeConfig = noize.MediumObfuscationConfig()
 		}
 	}
-	
+
 	adapter, err := masque.NewMasqueAdapter(ctx, masque.AdapterConfig{
 		ConfigPath:  masqueConfigPath,
 		DeviceName:  "vwarp-masque",

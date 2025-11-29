@@ -137,7 +137,7 @@ func (c *NoizeUDPConn) GetConfig() *NoizeConfig {
 // LightObfuscationConfig - minimal obfuscation, low overhead
 func LightObfuscationConfig() *NoizeConfig {
 	return &NoizeConfig{
-		I1:              "", // No signature packet to keep it simple
+		I1:              "",    // No signature packet to keep it simple
 		FragmentInitial: false, // Don't fragment to avoid breaking handshake
 		PaddingMin:      4,
 		PaddingMax:      12,
@@ -147,7 +147,7 @@ func LightObfuscationConfig() *NoizeConfig {
 		JcAfterI1:       0,
 		JcDuringHS:      0,
 		JcAfterHS:       0,
-		HandshakeDelay:  0, // No delay
+		HandshakeDelay:  0,  // No delay
 		MimicProtocol:   "", // No protocol mimicry
 	}
 }

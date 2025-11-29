@@ -9,9 +9,9 @@ import (
 func main() {
 	// Test UDP connectivity to MASQUE endpoint
 	endpoint := "162.159.198.1:443"
-	
+
 	fmt.Printf("Testing UDP connectivity to %s\n", endpoint)
-	
+
 	// Create UDP connection
 	conn, err := net.DialTimeout("udp", endpoint, 5*time.Second)
 	if err != nil {
@@ -19,9 +19,9 @@ func main() {
 		return
 	}
 	defer conn.Close()
-	
+
 	fmt.Println("UDP dial successful, attempting to send test packet...")
-	
+
 	// Send test data
 	testData := []byte("HELLO")
 	n, err := conn.Write(testData)
@@ -30,7 +30,7 @@ func main() {
 		return
 	}
 	fmt.Printf("Sent %d bytes\n", n)
-	
+
 	// Try to read with timeout (will likely timeout, but that's OK)
 	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	buf := make([]byte, 1024)
@@ -44,6 +44,6 @@ func main() {
 	} else {
 		fmt.Printf("Received %d bytes: %v\n", n, buf[:n])
 	}
-	
+
 	fmt.Println("UDP test complete")
 }
