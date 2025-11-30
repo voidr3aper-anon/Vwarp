@@ -70,22 +70,24 @@ func (c *NoizeUDPConn) Write(b []byte) (int, error) {
 		return c.UDPConn.Write(b)
 	}
 
-	// Get remote address
-	remoteAddr := c.UDPConn.RemoteAddr()
-	if remoteAddr == nil {
-		// Try to use stored address
-		c.mu.RLock()
-		if len(c.addrMap) > 0 {
-			for _, addr := range c.addrMap {
-				remoteAddr = addr
-				break
-			}
+	// Get remote address - try stored address first for better WiFi compatibility
+	var remoteAddr net.Addr
+	c.mu.RLock()
+	if len(c.addrMap) > 0 {
+		for _, addr := range c.addrMap {
+			remoteAddr = addr
+			break
 		}
-		c.mu.RUnlock()
+	}
+	c.mu.RUnlock()
 
-		if remoteAddr == nil {
-			return c.UDPConn.Write(b)
-		}
+	// Fallback to connection's remote address
+	if remoteAddr == nil {
+		remoteAddr = c.UDPConn.RemoteAddr()
+	}
+
+	if remoteAddr == nil {
+		return c.UDPConn.Write(b)
 	}
 
 	udpAddr, ok := remoteAddr.(*net.UDPAddr)
@@ -134,21 +136,33 @@ func (c *NoizeUDPConn) GetConfig() *NoizeConfig {
 
 // PresetConfigs provides preset obfuscation configurations
 
-// LightObfuscationConfig - minimal obfuscation, low overhead
+// LightObfuscationConfig - minimal obfuscation with junk packets to bypass DPI
 func LightObfuscationConfig() *NoizeConfig {
 	return &NoizeConfig{
-		I1:              "",    // No signature packet to keep it simple
-		FragmentInitial: false, // Don't fragment to avoid breaking handshake
-		PaddingMin:      0,
-		PaddingMax:      0,
-		RandomPadding:   true,
-		Jc:              12, // No junk packets
-		JcBeforeHS:      6,
-		JcAfterI1:       0,
-		JcDuringHS:      10,
-		JcAfterHS:       0,
-		HandshakeDelay:  3,  // No delay
-		MimicProtocol:   "", // No protocol mimicry
+		I1:               "",    // No signature packet
+		FragmentInitial:  false, // Don't fragment
+		PaddingMin:       0,     // Minimal padding
+		PaddingMax:       0,     // Light padding
+		RandomPadding:    true,
+		Jc:               6, // 6 junk packets total (reduced from 12)
+		JcBeforeHS:       3, // 3 before handshake
+		JcAfterI1:        0,
+		JcDuringHS:       0,
+		JcAfterHS:        3, // 3 after handshake
+		Jmin:             40,
+		Jmax:             60,
+		JunkInterval:     2 * time.Millisecond, // Minimal delay
+		JunkRandom:       true,
+		HandshakeDelay:   5 * time.Millisecond, // Minimal delay
+		MimicProtocol:    "",
+		RandomDelay:      false,
+		DelayMin:         0,
+		DelayMax:         0,
+		SNIFragmentation: false,
+		UseTimestamp:     false,
+		UseNonce:         false,
+		RandomizeInitial: false,
+		AllowZeroSize:    false,
 	}
 }
 
@@ -288,4 +302,10 @@ func MinimalObfuscationConfig() *NoizeConfig {
 		FragmentInitial: true, // Don't fragment
 		HandshakeDelay:  5,    // No delay
 	}
+}
+
+// WiFiOptimizedConfig - specifically optimized for WiFi network conditions
+// Uses light obfuscation with minimal junk packets for WiFi compatibility
+func WiFiOptimizedConfig() *NoizeConfig {
+	return LightObfuscationConfig()
 }

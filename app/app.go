@@ -494,6 +494,9 @@ func runWarpWithPsiphon(ctx context.Context, l *slog.Logger, opts WarpOptions, e
 func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoint string) error {
 	l.Info("running in MASQUE mode")
 
+	// Check network MTU compatibility for MASQUE
+	iputils.DetectAndCheckMTUForMasque(l)
+
 	// Convert endpoint to MASQUE endpoint (port 443)
 	// The endpoint may be from scanner (port 2408) or user-provided (any port)
 	var masqueEndpoint string

@@ -25,8 +25,8 @@ require (
 	github.com/quic-go/quic-go v0.55.0
 	github.com/refraction-networking/utls v1.7.3
 	github.com/rodaine/table v1.3.0
-	github.com/sagernet/gvisor v0.0.0-20241123041152-536d05261cff
-	github.com/sagernet/sing v0.6.10
+	github.com/sagernet/gvisor v0.0.0-20250811-sing-box-mod.1
+	github.com/sagernet/sing v0.7.13
 	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
 	github.com/yosida95/uritemplate/v3 v3.0.2
 	golang.org/x/crypto v0.43.0
