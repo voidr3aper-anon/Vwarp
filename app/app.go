@@ -601,8 +601,21 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 		tunnelSizesPool: &sync.Pool{New: func() interface{} { sizes := make([]int, 1); return &sizes }},
 	}
 
+	// Create adapter factory for reconnection
+	adapterFactory := func() (*masque.MasqueAdapter, error) {
+		l.Info("Recreating MASQUE adapter with fresh configuration")
+		return masque.NewMasqueAdapter(ctx, masque.AdapterConfig{
+			ConfigPath:  masqueConfigPath,
+			DeviceName:  "vwarp-masque",
+			Endpoint:    masqueEndpoint,
+			Logger:      l,
+			License:     opts.License,
+			NoizeConfig: noizeConfig,
+		})
+	}
+
 	// Start tunnel maintenance goroutine
-	go maintainMasqueTunnel(ctx, l, adapter, tunAdapter, singleMTU)
+	go maintainMasqueTunnel(ctx, l, adapter, adapterFactory, tunAdapter, singleMTU)
 
 	// Test connectivity
 	if err := usermodeTunTest(ctx, l, tnet, opts.TestURL); err != nil {

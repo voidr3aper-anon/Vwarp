@@ -87,8 +87,22 @@ func NewMasqueAdapter(ctx context.Context, cfg AdapterConfig) (*MasqueAdapter, e
 
 	// Load or register config
 	var usqueConfig *config.Config
-	if _, err := os.Stat(cfg.ConfigPath); os.IsNotExist(err) {
-		cfg.Logger.Info("No MASQUE config found, registering new device", "path", cfg.ConfigPath)
+	configExists := false
+	if _, err := os.Stat(cfg.ConfigPath); err == nil {
+		// Config file exists, try to load it
+		cfg.Logger.Info("Loading existing MASQUE config", "path", cfg.ConfigPath)
+		if err := config.LoadConfig(cfg.ConfigPath); err != nil {
+			cfg.Logger.Warn("Failed to load existing config, will re-register", "error", err)
+			// Remove corrupted config file
+			os.Remove(cfg.ConfigPath)
+		} else {
+			configExists = true
+			usqueConfig = &config.AppConfig
+		}
+	}
+
+	if !configExists {
+		cfg.Logger.Info("No valid MASQUE config found, registering new device", "path", cfg.ConfigPath)
 
 		deviceName := cfg.DeviceName
 		if deviceName == "" {
@@ -145,12 +159,6 @@ func NewMasqueAdapter(ctx context.Context, cfg AdapterConfig) (*MasqueAdapter, e
 			"ipv4", usqueConfig.IPv4,
 			"ipv6", usqueConfig.IPv6,
 		)
-	} else {
-		cfg.Logger.Info("Loading existing MASQUE config", "path", cfg.ConfigPath)
-		if err := config.LoadConfig(cfg.ConfigPath); err != nil {
-			return nil, fmt.Errorf("failed to load config: %w", err)
-		}
-		usqueConfig = &config.AppConfig
 	}
 
 	// Determine endpoint - ALWAYS prioritize cfg.Endpoint if provided
