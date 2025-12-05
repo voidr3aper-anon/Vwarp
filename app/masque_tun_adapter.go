@@ -196,7 +196,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 				// Try to reconnect with exponential backoff
 				for attempt := 1; attempt <= 5 && ctx.Err() == nil; attempt++ {
 					backoff := time.Duration(attempt) * 2 * time.Second
-					l.Info("⏳ Reconnection attempt", "attempt", attempt, "backoff", backoff)
+					l.Info("Reconnection attempt", "attempt", attempt, "backoff", backoff)
 
 					time.Sleep(backoff)
 
