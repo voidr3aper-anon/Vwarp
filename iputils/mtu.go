@@ -112,7 +112,7 @@ func getSystemMTU() map[string]int {
 
 // DetectAndCheckMTUForMasque detects network MTU and warns if it's too low for MASQUE
 func DetectAndCheckMTUForMasque(logger *slog.Logger) {
-	logger.Info("🔍 Starting MASQUE MTU compatibility check")
+	logger.Info("Starting MASQUE MTU compatibility check")
 
 	minMTU, maxMTU, interfaces, err := detectNetworkMTU()
 	if err != nil {

@@ -17,21 +17,26 @@ vwarp is an open-source implementation of Cloudflare's Warp, enhanced with Psiph
 # Basic WARP connection
 vwarp --bind 127.0.0.1:8086
 
-# With AtomicNoize obfuscation (anti-censorship)
+# MASQUE mode with noize obfuscation (bypass DPI/censorship)
+vwarp --masque --masque-noize --masque-noize-preset light
+
+# With AtomicNoize obfuscation (WireGuard anti-censorship)
 vwarp --atomicnoize-enable --bind 127.0.0.1:8086
 
 # Through SOCKS5 proxy (double-VPN)
 vwarp --proxy socks5://127.0.0.1:1080 --bind 127.0.0.1:8086
 
-# Maximum privacy (AtomicNoize + SOCKS5 proxy)
-vwarp --proxy socks5://127.0.0.1:1080 --atomicnoize-enable --verbose
+# Maximum privacy (MASQUE + noize + SOCKS5 proxy)
+vwarp --masque --masque-noize --masque-noize-preset heavy --proxy socks5://127.0.0.1:1080
 ```
 
-📖 **New to these features?** Check out the [SOCKS5 Proxy Guide](SOCKS_PROXY_GUIDE.md) and [AtomicNoize Guide](cmd/docs/ATOMICNOIZE_README.md)
+📖 **Need help?** Check out the [MASQUE Noize Guide](docs/MASQUE_NOIZE_GUIDE.md), [SOCKS5 Proxy Guide](SOCKS_PROXY_GUIDE.md) and [AtomicNoize Guide](cmd/docs/ATOMICNOIZE_README.md)
 
 ## Features
 
 - **Warp Integration**: Leverages Cloudflare's Warp to provide a fast and secure VPN service.
+- **MASQUE Tunneling**: Connect to Warp via MASQUE proxy protocol for enhanced censorship resistance.
+- **MASQUE Noize Obfuscation**: Advanced packet obfuscation system to bypass Deep Packet Inspection (DPI). [Learn more](docs/MASQUE_NOIZE_GUIDE.md)
 - **Psiphon Chaining**: Integrates with Psiphon for censorship circumvention, allowing seamless access to the internet in restrictive environments.
 - **Warp in Warp Chaining**: Chaining two instances of warp together to bypass location restrictions.
 - **AtomicNoize Protocol**: Advanced obfuscation protocol for enhanced privacy and censorship resistance. [Learn more](cmd/docs/ATOMICNOIZE_README.md)
@@ -87,6 +92,12 @@ FLAGS
       --atomicnoize-junk-interval DURATION     Time interval between sending junk packets (e.g., 10ms, 50ms) (default: 10ms)
       --atomicnoize-allow-zero-size            Allow zero-size junk packets (may not work with all UDP implementations)
       --atomicnoize-handshake-delay DURATION   Delay before actual WireGuard handshake after I-sequence (e.g., 50ms, 100ms) (default: 0s)
+      --masque                                 enable MASQUE mode (connect to warp via MASQUE proxy)
+      --masque-auto-fallback                   automatically fallback to WireGuard if MASQUE fails
+      --masque-preferred                       prefer MASQUE over WireGuard (with automatic fallback)
+      --masque-noize                           enable MASQUE QUIC obfuscation (helps bypass DPI/censorship)
+      --masque-noize-preset STRING             MASQUE noize preset: light, medium, heavy, stealth, gfw, firewall (default: medium)
+      --masque-noize-config STRING             path to custom MASQUE noize configuration JSON file (overrides preset)
       --proxy STRING                           SOCKS5 proxy address to route WireGuard traffic through (e.g., socks5://127.0.0.1:1080)
 ```
 
@@ -97,7 +108,19 @@ FLAGS
 vwarp --bind 127.0.0.1:8086
 ```
 
-#### With AtomicNoize Obfuscation
+#### MASQUE Mode with Noize Obfuscation
+```bash
+# Light obfuscation (recommended for most users)
+vwarp --masque --masque-noize --masque-noize-preset light
+
+# Heavy obfuscation for strict censorship
+vwarp --masque --masque-noize --masque-noize-preset heavy
+
+# Custom configuration from JSON file
+vwarp --masque --masque-noize --masque-noize-config docs/examples/basic-obfuscation.json
+```
+
+#### With AtomicNoize Obfuscation (WireGuard)
 ```bash
 vwarp --atomicnoize-enable --atomicnoize-packet-size 1280 --bind 127.0.0.1:8086
 ```

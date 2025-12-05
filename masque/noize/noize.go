@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	mathrand "math/rand"
 	"net"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,15 +21,15 @@ var rng = mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
 // NoizeConfig holds MASQUE QUIC obfuscation parameters
 type NoizeConfig struct {
 	// === Signature Packets (Protocol Imitation) ===
-	I1 string // Main signature packet (mimics legitimate protocols)
-	I2 string // Secondary signature packet
-	I3 string // Tertiary signature packet
-	I4 string // Additional signature packet
-	I5 string // Additional signature packet
+	I1 string `json:"i1,omitempty"` // Main signature packet (mimics legitimate protocols)
+	I2 string `json:"i2,omitempty"` // Secondary signature packet
+	I3 string `json:"i3,omitempty"` // Tertiary signature packet
+	I4 string `json:"i4,omitempty"` // Additional signature packet
+	I5 string `json:"i5,omitempty"` // Additional signature packet
 
 	// === QUIC Packet Fragmentation ===
-	FragmentSize    int           // Fragment QUIC packets to this size (0 = no fragmentation)
-	FragmentInitial bool          // Fragment QUIC Initial packets specifically
+	FragmentSize    int           `json:"fragment_size,omitempty"`    // Fragment QUIC packets to this size (0 = no fragmentation)
+	FragmentInitial bool          `json:"fragment_initial,omitempty"` // Fragment QUIC Initial packets specifically
 	FragmentDelay   time.Duration // Delay between fragments
 
 	// === Padding & Obfuscation ===
@@ -80,12 +82,13 @@ type NoizeConfig struct {
 
 // Noize handles MASQUE QUIC packet obfuscation
 type Noize struct {
-	config   *NoizeConfig
-	conn     *net.UDPConn
-	mu       sync.RWMutex
-	lastSent map[string]time.Time
-	hsState  map[string]*handshakeState
-	seqNum   uint32
+	config       *NoizeConfig
+	conn         *net.UDPConn
+	mu           sync.RWMutex
+	lastSent     map[string]time.Time
+	hsState      map[string]*handshakeState
+	seqNum       uint32
+	debugPadding bool // Debug flag for padding operations
 }
 
 type handshakeState struct {
@@ -156,6 +159,20 @@ func (n *Noize) WrapConn(conn *net.UDPConn) *net.UDPConn {
 	return conn
 }
 
+// EnableDebugPadding enables debug output for padding operations
+func (n *Noize) EnableDebugPadding() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.debugPadding = true
+}
+
+// DisableDebugPadding disables debug output for padding operations
+func (n *Noize) DisableDebugPadding() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.debugPadding = false
+}
+
 // ObfuscateWrite obfuscates outgoing QUIC packets
 func (n *Noize) ObfuscateWrite(packet []byte, addr *net.UDPAddr) ([]byte, error) {
 	if len(packet) == 0 {
@@ -191,10 +208,20 @@ func (n *Noize) ObfuscateWrite(packet []byte, addr *net.UDPAddr) ([]byte, error)
 			n.mu.Unlock()
 		}
 
-		// Fragment Initial packet if configured
-		if n.config.FragmentInitial && n.config.FragmentSize > 0 {
-			// Note: Actual sending of fragments should be done by caller
-			return n.fragmentPacket(packet, addr), nil
+		if n.config.FragmentInitial && n.config.FragmentSize > 0 && len(packet) > n.config.FragmentSize {
+			return n.fragmentInitialPacket(packet, addr), nil
+		}
+	}
+
+	if packetType == QUIC1RTT {
+		n.mu.Lock()
+		state := n.hsState[addrKey]
+		if state != nil && !state.postSent {
+			state.postSent = true
+			n.mu.Unlock()
+			go n.executePostHandshake(addr)
+		} else {
+			n.mu.Unlock()
 		}
 	}
 
@@ -218,29 +245,52 @@ func (n *Noize) executePreHandshake(addr *net.UDPAddr) {
 		return
 	}
 
+	if n.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: executePreHandshake started for %s\n", addr.String())
+		fmt.Printf("NOIZE_DEBUG: JcBeforeHS=%d, JcAfterI1=%d, JcDuringHS=%d\n",
+			n.config.JcBeforeHS, n.config.JcAfterI1, n.config.JcDuringHS)
+	}
+
+	if n.config.JcBeforeHS > 0 {
+		if n.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: Sending %d junk packets before handshake\n", n.config.JcBeforeHS)
+		}
+		for i := 0; i < n.config.JcBeforeHS; i++ {
+			junk := n.generateJunkPacket()
+			if len(junk) > 0 {
+				n.conn.WriteToUDP(junk, addr)
+				if n.debugPadding {
+					fmt.Printf("NOIZE_DEBUG: Sent %d byte junk packet before HS\n", len(junk))
+				}
+			}
+			n.applyJunkDelay()
+		}
+	}
+
 	// Send I1 signature packet
 	if n.config.I1 != "" {
 		i1Packet, err := parseCPSPacket(n.config.I1)
 		if err == nil && len(i1Packet) > 0 {
 			n.conn.WriteToUDP(i1Packet, addr)
+			if n.debugPadding {
+				fmt.Printf("NOIZE_DEBUG: Sent I1 signature packet (%d bytes)\n", len(i1Packet))
+			}
 			time.Sleep(2 * time.Millisecond)
 		}
 	}
 
-	// Send junk packets after I1
 	if n.config.JcAfterI1 > 0 {
+		if n.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: Sending %d junk packets after I1\n", n.config.JcAfterI1)
+		}
 		for i := 0; i < n.config.JcAfterI1; i++ {
 			junk := n.generateJunkPacket()
-			n.conn.WriteToUDP(junk, addr)
-			n.applyJunkDelay()
-		}
-	}
-
-	// Send junk packets before handshake
-	if n.config.JcBeforeHS > 0 {
-		for i := 0; i < n.config.JcBeforeHS; i++ {
-			junk := n.generateJunkPacket()
-			n.conn.WriteToUDP(junk, addr)
+			if len(junk) > 0 {
+				n.conn.WriteToUDP(junk, addr)
+				if n.debugPadding {
+					fmt.Printf("NOIZE_DEBUG: Sent %d byte junk packet after I1\n", len(junk))
+				}
+			}
 			n.applyJunkDelay()
 		}
 	}
@@ -254,9 +304,75 @@ func (n *Noize) executePreHandshake(addr *net.UDPAddr) {
 		packet, err := parseCPSPacket(sig)
 		if err == nil && len(packet) > 0 {
 			n.conn.WriteToUDP(packet, addr)
+			if n.debugPadding {
+				fmt.Printf("NOIZE_DEBUG: Sent signature packet (%d bytes)\n", len(packet))
+			}
 			time.Sleep(1 * time.Millisecond)
 		}
 	}
+
+	if n.config.JcDuringHS > 0 {
+		if n.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: Sending %d junk packets during handshake\n", n.config.JcDuringHS)
+		}
+		for i := 0; i < n.config.JcDuringHS; i++ {
+			junk := n.generateJunkPacket()
+			if len(junk) > 0 {
+				n.conn.WriteToUDP(junk, addr)
+				if n.debugPadding {
+					fmt.Printf("NOIZE_DEBUG: Sent %d byte junk packet during HS\n", len(junk))
+				}
+			}
+			n.applyJunkDelay()
+		}
+	}
+
+	if n.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: executePreHandshake completed for %s\n", addr.String())
+	}
+}
+
+func (n *Noize) executePostHandshake(addr *net.UDPAddr) {
+	if n.conn == nil {
+		return
+	}
+
+	if n.config.JcAfterHS > 0 {
+		for i := 0; i < n.config.JcAfterHS; i++ {
+			junk := n.generateJunkPacket()
+			n.conn.WriteToUDP(junk, addr)
+			n.applyJunkDelay()
+		}
+	}
+}
+
+func (n *Noize) fragmentInitialPacket(packet []byte, addr *net.UDPAddr) []byte {
+	if n.config.FragmentSize <= 0 || len(packet) <= n.config.FragmentSize {
+		return packet
+	}
+
+	fragmentSize := n.config.FragmentSize
+
+	if n.conn != nil {
+		go func() {
+			for offset := fragmentSize; offset < len(packet); offset += fragmentSize {
+				end := offset + fragmentSize
+				if end > len(packet) {
+					end = len(packet)
+				}
+
+				fragment := packet[offset:end]
+				n.conn.WriteToUDP(fragment, addr)
+
+				if n.config.FragmentDelay > 0 {
+					time.Sleep(n.config.FragmentDelay)
+				}
+			}
+		}()
+	}
+
+	// Return first fragment
+	return packet[:fragmentSize]
 }
 
 // fragmentPacket splits a packet into smaller fragments
@@ -291,9 +407,15 @@ func (n *Noize) fragmentPacket(packet []byte, addr *net.UDPAddr) []byte {
 	return packet[:fragmentSize]
 }
 
-// addPadding adds random padding to packet
+// addPadding adds random padding to packet without breaking QUIC structure
 func (n *Noize) addPadding(packet []byte) []byte {
 	if n.config.PaddingMax == 0 {
+		return packet
+	}
+
+	// For QUIC packets, we need to be careful with padding
+	// Don't pad if packet is too small or looks like a QUIC control packet
+	if len(packet) < 16 {
 		return packet
 	}
 
@@ -308,8 +430,23 @@ func (n *Noize) addPadding(packet []byte) []byte {
 		return packet
 	}
 
+	// Limit padding size to avoid MTU issues
+	originalLen := len(packet)
+	if originalLen+paddingSize > 1200 {
+		paddingSize = 1200 - originalLen
+		if paddingSize <= 0 {
+			return packet
+		}
+	}
+
 	padding := make([]byte, paddingSize)
 	rand.Read(padding)
+
+	// Debug: Print padding info (enable via EnableDebugPadding())
+	if n.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: Added %d bytes padding to %d byte packet (total: %d)\n",
+			paddingSize, originalLen, originalLen+paddingSize)
+	}
 
 	return append(packet, padding...)
 }
@@ -319,9 +456,21 @@ func (n *Noize) generateJunkPacket() []byte {
 	minSize := n.config.Jmin
 	maxSize := n.config.Jmax
 
+	// Debug output
+	if n.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: Generating junk packet - min:%d, max:%d, allowZero:%t\n",
+			minSize, maxSize, n.config.AllowZeroSize)
+	}
+
 	if minSize == 0 && maxSize == 0 {
 		if n.config.AllowZeroSize {
+			if n.debugPadding {
+				fmt.Printf("NOIZE_DEBUG: Returning zero-size junk packet\n")
+			}
 			return []byte{}
+		}
+		if n.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: Returning 1-byte fallback junk packet\n")
 		}
 		return []byte{0x00}
 	}
@@ -340,11 +489,18 @@ func (n *Noize) generateJunkPacket() []byte {
 	}
 
 	if size == 0 && n.config.AllowZeroSize {
+		if n.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: Returning zero-size junk packet (calculated)\n")
+		}
 		return []byte{}
 	}
 
 	junk := make([]byte, size)
 	rand.Read(junk)
+
+	if n.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: Generated %d byte junk packet\n", size)
+	}
 
 	// Optionally make it look like a protocol packet
 	if n.config.MimicProtocol != "" && size > 10 {
@@ -593,4 +749,146 @@ func (n *Noize) applyProtocolMimic(junk []byte) {
 			binary.BigEndian.PutUint32(junk[4:8], 0x2112A442)
 		}
 	}
+}
+
+// LoadConfigFromFile loads NoizeConfig from a JSON file
+func LoadConfigFromFile(filepath string) (*NoizeConfig, error) {
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	// First unmarshal into a generic map to handle duration strings
+	var rawConfig map[string]interface{}
+	if err := json.Unmarshal(data, &rawConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse config JSON: %w", err)
+	}
+
+	config := &NoizeConfig{}
+
+	// Handle all duration fields manually
+	durationFields := []string{"JunkInterval", "HandshakeDelay", "PacketDelay", "DelayMin", "DelayMax", "FragmentDelay"}
+
+	for _, field := range durationFields {
+		if val, ok := rawConfig[field]; ok {
+			if strVal, ok := val.(string); ok {
+				if dur, err := time.ParseDuration(strVal); err == nil {
+					switch field {
+					case "JunkInterval":
+						config.JunkInterval = dur
+					case "HandshakeDelay":
+						config.HandshakeDelay = dur
+					case "PacketDelay":
+						config.PacketDelay = dur
+					case "DelayMin":
+						config.DelayMin = dur
+					case "DelayMax":
+						config.DelayMax = dur
+					case "FragmentDelay":
+						config.FragmentDelay = dur
+					}
+				}
+			}
+			delete(rawConfig, field)
+		}
+	}
+
+	// Convert back to JSON and unmarshal into struct for other fields
+	remainingData, err := json.Marshal(rawConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal remaining config: %w", err)
+	}
+
+	if err := json.Unmarshal(remainingData, config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	return config, nil
+}
+
+// SaveConfigToFile saves NoizeConfig to a JSON file
+func (c *NoizeConfig) SaveConfigToFile(filepath string) error {
+	// Create a map for manual JSON creation to avoid recursion issues
+	configMap := map[string]interface{}{
+		"I1":               c.I1,
+		"I2":               c.I2,
+		"I3":               c.I3,
+		"I4":               c.I4,
+		"I5":               c.I5,
+		"FragmentSize":     c.FragmentSize,
+		"FragmentInitial":  c.FragmentInitial,
+		"PaddingMin":       c.PaddingMin,
+		"PaddingMax":       c.PaddingMax,
+		"RandomPadding":    c.RandomPadding,
+		"Jc":               c.Jc,
+		"Jmin":             c.Jmin,
+		"Jmax":             c.Jmax,
+		"JcBeforeHS":       c.JcBeforeHS,
+		"JcAfterI1":        c.JcAfterI1,
+		"JcDuringHS":       c.JcDuringHS,
+		"JcAfterHS":        c.JcAfterHS,
+		"JunkRandom":       c.JunkRandom,
+		"MimicProtocol":    c.MimicProtocol,
+		"CustomWrapper":    c.CustomWrapper,
+		"RandomDelay":      c.RandomDelay,
+		"ReversedOrder":    c.ReversedOrder,
+		"DuplicatePackets": c.DuplicatePackets,
+		"AllowZeroSize":    c.AllowZeroSize,
+		"UseTimestamp":     c.UseTimestamp,
+		"UseNonce":         c.UseNonce,
+		"RandomizeInitial": c.RandomizeInitial,
+		"FakeLoss":         c.FakeLoss,
+		"SNIFragmentation": c.SNIFragmentation,
+		"SNIFragment":      c.SNIFragment,
+	}
+
+	// Add duration fields as strings (include zero values too)
+	configMap["JunkInterval"] = c.JunkInterval.String()
+	configMap["HandshakeDelay"] = c.HandshakeDelay.String()
+	configMap["PacketDelay"] = c.PacketDelay.String()
+	configMap["DelayMin"] = c.DelayMin.String()
+	configMap["DelayMax"] = c.DelayMax.String()
+	configMap["FragmentDelay"] = c.FragmentDelay.String()
+
+	// Add slice fields
+	if len(c.FakeALPN) > 0 {
+		configMap["FakeALPN"] = c.FakeALPN
+	}
+
+	data, err := json.MarshalIndent(configMap, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(filepath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}
+
+// ExportPresetToFile saves a preset configuration to a JSON file for customization
+func ExportPresetToFile(presetName, filepath string) error {
+	var config *NoizeConfig
+
+	switch presetName {
+	case "minimal":
+		config = MinimalObfuscationConfig()
+	case "light":
+		config = LightObfuscationConfig()
+	case "medium":
+		config = MediumObfuscationConfig()
+	case "heavy":
+		config = HeavyObfuscationConfig()
+	case "stealth":
+		config = StealthObfuscationConfig()
+	case "gfw":
+		config = GFWBypassConfig()
+	case "firewall":
+		config = FirewallBypassConfig()
+	default:
+		return fmt.Errorf("unknown preset: %s", presetName)
+	}
+
+	return config.SaveConfigToFile(filepath)
 }

@@ -1,6 +1,7 @@
 package noize
 
 import (
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -34,10 +35,32 @@ func (c *NoizeUDPConn) WriteToUDP(b []byte, addr *net.UDPAddr) (int, error) {
 		return c.UDPConn.WriteToUDP(b, addr)
 	}
 
+	config := c.noize.config
+	if config.Jc == 0 && config.JcBeforeHS == 0 && config.JcAfterI1 == 0 &&
+		config.JcDuringHS == 0 && config.JcAfterHS == 0 && config.PaddingMax == 0 &&
+		!config.FragmentInitial && config.I1 == "" && config.I2 == "" {
+		if c.noize.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: All obfuscation disabled, bypassing - packet size: %d\n", len(b))
+		}
+		return c.UDPConn.WriteToUDP(b, addr)
+	}
+
+	if c.noize.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: WriteToUDP called - packet size: %d, addr: %s\n", len(b), addr.String())
+	}
+
 	// Obfuscate the packet
 	obfuscated, err := c.noize.ObfuscateWrite(b, addr)
 	if err != nil {
+		if c.noize.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: ObfuscateWrite error: %v\n", err)
+		}
 		return 0, err
+	}
+
+	// Debug: Log result
+	if c.noize.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: Packet obfuscated - original: %d bytes, final: %d bytes\n", len(b), len(obfuscated))
 	}
 
 	// Write obfuscated packet
@@ -55,7 +78,6 @@ func (c *NoizeUDPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 
 // ReadFrom implements the ReaderFrom interface (used by QUIC)
 func (c *NoizeUDPConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	// For now, don't obfuscate reads (only writes need obfuscation)
 	return c.UDPConn.ReadFrom(b)
 }
 
@@ -134,35 +156,88 @@ func (c *NoizeUDPConn) GetConfig() *NoizeConfig {
 	return c.noize.config
 }
 
+func (c *NoizeUDPConn) EnableDebugPadding() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.noize != nil {
+		c.noize.EnableDebugPadding()
+	}
+}
+
+func (c *NoizeUDPConn) DisableDebugPadding() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.noize != nil {
+		c.noize.DisableDebugPadding()
+	}
+}
+
 // PresetConfigs provides preset obfuscation configurations
 
 // LightObfuscationConfig - minimal obfuscation with junk packets to bypass DPI
 func LightObfuscationConfig() *NoizeConfig {
 	return &NoizeConfig{
-		I1:               "",    // No signature packet
-		FragmentInitial:  false, // Don't fragment
-		PaddingMin:       0,     // Minimal padding
-		PaddingMax:       0,     // Light padding
-		RandomPadding:    true,
-		Jc:               6, // 6 junk packets total (reduced from 12)
-		JcBeforeHS:       3, // 3 before handshake
-		JcAfterI1:        0,
-		JcDuringHS:       0,
-		JcAfterHS:        3, // 3 after handshake
-		Jmin:             40,
-		Jmax:             60,
-		JunkInterval:     2 * time.Millisecond, // Minimal delay
+		I1:               "<b 474554202f20485454502f312e31><r 8>", // HTTP GET signature
+		FragmentInitial:  false,                                   // Don't fragment to avoid complexity
+		PaddingMin:       0,                                       // Small padding to change packet size
+		PaddingMax:       0,                                       // Variable padding
+		RandomPadding:    false,
+		Jc:               8,                    // Total junk packets
+		JcBeforeHS:       2,                    // Junk before handshake
+		JcAfterI1:        1,                    // Junk after signature
+		JcDuringHS:       2,                    // Junk during handshake
+		JcAfterHS:        3,                    // Junk after handshake
+		Jmin:             40,                   // Minimum junk size (realistic)
+		Jmax:             120,                  // Maximum junk size
+		JunkInterval:     3 * time.Millisecond, // Small delay between junk
 		JunkRandom:       true,
-		HandshakeDelay:   5 * time.Millisecond, // Minimal delay
-		MimicProtocol:    "",
-		RandomDelay:      false,
-		DelayMin:         0,
-		DelayMax:         0,
-		SNIFragmentation: false,
+		HandshakeDelay:   5 * time.Millisecond, // Small delay before handshake
+		MimicProtocol:    "",                   // Mimic HTTPS traffic
+		RandomDelay:      true,
+		DelayMin:         1 * time.Millisecond,
+		DelayMax:         5 * time.Millisecond,
+		SNIFragmentation: true, // Keep simple for now
 		UseTimestamp:     false,
-		UseNonce:         false,
+		UseNonce:         true,  // Add some randomness
+		RandomizeInitial: true,  // Randomize initial packet
+		AllowZeroSize:    false, // Don't allow zero size
+	}
+}
+
+// FirewallBypassConfig - based on working GFW config but lighter
+func FirewallBypassConfig() *NoizeConfig {
+	return &NoizeConfig{
+		// Mimic HTTP/3 QUIC with realistic patterns (same as GFW)
+		I1:              "<b 0d0a0d0a><t><r 24>",
+		I2:              "<r 48>",
+		FragmentSize:    1200,
+		FragmentInitial: false,
+		FragmentDelay:   2 * time.Millisecond,
+		PaddingMin:      2,
+		PaddingMax:      6,
+		RandomPadding:   false,
+		Jc:              6,
+		Jmin:            48,
+		Jmax:            190,
+		JcBeforeHS:      2,
+		JcAfterI1:       2,
+		JcDuringHS:      2,
+		JcAfterHS:       2,
+		JunkInterval:    4 * time.Millisecond,
+		JunkRandom:      true,
+		MimicProtocol:   "",
+		HandshakeDelay:  5 * time.Millisecond,
+		RandomDelay:     true,
+		DelayMin:        2 * time.Millisecond,
+		DelayMax:        12 * time.Millisecond,
+
+		SNIFragmentation: false,
+		SNIFragment:      12,
+		UseTimestamp:     false,
+		UseNonce:         true,
 		RandomizeInitial: false,
-		AllowZeroSize:    false,
+		DuplicatePackets: false,
+		FakeLoss:         0.01, // 1% fake loss
 	}
 }
 
@@ -177,11 +252,11 @@ func HeavyObfuscationConfig() *NoizeConfig {
 		I1:               "<b 0d0a0d0a><t><r 32>",
 		I2:               "<b 474554202f20485454502f312e31><r 16>",
 		I3:               "<r 64>",
-		FragmentSize:     256,
+		FragmentSize:     1280,
 		FragmentInitial:  true,
 		FragmentDelay:    3 * time.Millisecond,
-		PaddingMin:       32,
-		PaddingMax:       128,
+		PaddingMin:       3,
+		PaddingMax:       12,
 		RandomPadding:    true,
 		Jc:               10,
 		Jmin:             128,
@@ -192,7 +267,7 @@ func HeavyObfuscationConfig() *NoizeConfig {
 		JcAfterHS:        3,
 		JunkInterval:     8 * time.Millisecond,
 		JunkRandom:       true,
-		MimicProtocol:    "dtls",
+		MimicProtocol:    "",
 		HandshakeDelay:   20 * time.Millisecond,
 		RandomDelay:      true,
 		DelayMin:         2 * time.Millisecond,
@@ -209,10 +284,10 @@ func HeavyObfuscationConfig() *NoizeConfig {
 func StealthObfuscationConfig() *NoizeConfig {
 	return &NoizeConfig{
 		I1:               "<b 160301><r 2><b 0100>", // TLS ClientHello start
-		MimicProtocol:    "https",
+		MimicProtocol:    "",
 		PaddingMin:       16,
-		PaddingMax:       48,
-		RandomPadding:    true,
+		PaddingMax:       18,
+		RandomPadding:    false,
 		Jc:               3,
 		Jmin:             40,
 		Jmax:             200,
@@ -225,53 +300,38 @@ func StealthObfuscationConfig() *NoizeConfig {
 		DelayMin:         5 * time.Millisecond,
 		DelayMax:         25 * time.Millisecond,
 		UseTimestamp:     false, // Don't use obvious timestamps
-		RandomizeInitial: true,
+		RandomizeInitial: false,
 	}
 }
 
 // GFWBypassConfig - specifically designed to bypass Great Firewall
 func GFWBypassConfig() *NoizeConfig {
 	return &NoizeConfig{
-		// Mimic HTTP/3 QUIC with realistic patterns
-		I1: "<b 0d0a0d0a><t><r 24>",
-		I2: "<r 48>",
+		I1:              "<b 0d0a0d0a><t><r 24>",
+		I2:              "<r 48>",
+		FragmentSize:    1200,
+		FragmentInitial: false,
+		FragmentDelay:   3 * time.Millisecond,
+		PaddingMin:      8,
+		PaddingMax:      12,
+		RandomPadding:   true,
+		Jc:              8,
+		Jmin:            64,
+		Jmax:            384,
+		JcBeforeHS:      3,
+		JcAfterI1:       2,
+		JcDuringHS:      2,
+		JcAfterHS:       1,
+		JunkInterval:    3 * time.Millisecond,
+		JunkRandom:      true,
+		MimicProtocol:   "",
 
-		// Heavy fragmentation to break DPI patterns
-		FragmentSize:    128,
-		FragmentInitial: true,
-		FragmentDelay:   1 * time.Millisecond,
-
-		// Significant padding to mask packet sizes
-		PaddingMin:    48,
-		PaddingMax:    192,
-		RandomPadding: true,
-
-		// Many junk packets to confuse statistical analysis
-		Jc:   8,
-		Jmin: 64,
-		Jmax: 384,
-
-		JcBeforeHS:   3,
-		JcAfterI1:    2,
-		JcDuringHS:   2,
-		JcAfterHS:    1,
-		JunkInterval: 3 * time.Millisecond,
-		JunkRandom:   true,
-
-		// Mimic legitimate DTLS/QUIC traffic
-		MimicProtocol: "dtls",
-
-		// Timing randomization to avoid pattern detection
-		HandshakeDelay: 25 * time.Millisecond,
-		RandomDelay:    true,
-		DelayMin:       1 * time.Millisecond,
-		DelayMax:       20 * time.Millisecond,
-
-		// SNI fragmentation to bypass SNI-based blocking
+		HandshakeDelay:   25 * time.Millisecond,
+		RandomDelay:      true,
+		DelayMin:         1 * time.Millisecond,
+		DelayMax:         20 * time.Millisecond,
 		SNIFragmentation: true,
 		SNIFragment:      8,
-
-		// Advanced fingerprinting mitigation
 		UseTimestamp:     true,
 		UseNonce:         true,
 		RandomizeInitial: true,
@@ -294,18 +354,20 @@ func NoObfuscationConfig() *NoizeConfig {
 // MinimalObfuscationConfig - very light obfuscation, least likely to break handshake
 func MinimalObfuscationConfig() *NoizeConfig {
 	return &NoizeConfig{
-		// Just add simple padding, no fragmentation or junk packets
+		// Minimal obfuscation - just a few junk packets after handshake
 		PaddingMin:      0,
 		PaddingMax:      0,
-		RandomPadding:   true,
-		Jc:              10,   // No junk packets
-		FragmentInitial: true, // Don't fragment
-		HandshakeDelay:  5,    // No delay
+		RandomPadding:   false,
+		Jc:              12, // Very few junk packets
+		JcBeforeHS:      4,  // No junk before handshake
+		JcAfterI1:       4,  // No junk after I1
+		JcDuringHS:      4,  // No junk during handshake
+		JcAfterHS:       3,  // Only after handshake
+		Jmin:            0,
+		Jmax:            0,
+		FragmentInitial: false, // Don't fragment
+		HandshakeDelay:  0,     // No delay
+		JunkInterval:    5 * time.Millisecond,
+		AllowZeroSize:   true,
 	}
-}
-
-// WiFiOptimizedConfig - specifically optimized for WiFi network conditions
-// Uses light obfuscation with minimal junk packets for WiFi compatibility
-func WiFiOptimizedConfig() *NoizeConfig {
-	return LightObfuscationConfig()
 }

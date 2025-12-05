@@ -37,6 +37,7 @@ type WarpOptions struct {
 	MasquePreferred    bool   // Prefer MASQUE over WireGuard when both are available
 	MasqueNoize        bool   // Enable MASQUE noize obfuscation
 	MasqueNoizePreset  string // Noize preset: light, medium, heavy, stealth, gfw
+	MasqueNoizeConfig  string // Path to custom noize configuration JSON file
 	Scan               *wiresocks.ScanOptions
 	CacheDir           string
 	FwMark             uint32
@@ -518,32 +519,49 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 	// Configure noize obfuscation if enabled
 	var noizeConfig *noize.NoizeConfig
 	if opts.MasqueNoize {
-		preset := opts.MasqueNoizePreset
-		if preset == "" {
-			preset = "medium"
+		// Check for custom config file first
+		if opts.MasqueNoizeConfig != "" {
+			l.Info("Loading custom MASQUE noize configuration", "configPath", opts.MasqueNoizeConfig)
+			customConfig, err := noize.LoadConfigFromFile(opts.MasqueNoizeConfig)
+			if err != nil {
+				l.Warn("Failed to load custom noize config, falling back to preset", "error", err, "preset", opts.MasqueNoizePreset)
+			} else {
+				noizeConfig = customConfig
+				l.Info("Custom noize configuration loaded successfully")
+			}
 		}
 
-		l.Info("Enabling MASQUE noize obfuscation", "preset", preset)
+		// Use preset if no custom config loaded
+		if noizeConfig == nil {
+			preset := opts.MasqueNoizePreset
+			if preset == "" {
+				preset = "medium"
+			}
 
-		switch preset {
-		case "minimal":
-			noizeConfig = noize.MinimalObfuscationConfig()
-		case "light":
-			noizeConfig = noize.LightObfuscationConfig()
-		case "medium":
-			noizeConfig = noize.MediumObfuscationConfig()
-		case "heavy":
-			noizeConfig = noize.HeavyObfuscationConfig()
-		case "stealth":
-			noizeConfig = noize.StealthObfuscationConfig()
-		case "gfw":
-			noizeConfig = noize.GFWBypassConfig()
-		case "none":
-			noizeConfig = nil
-			l.Info("Noize disabled (preset=none)")
-		default:
-			l.Warn("Unknown noize preset, using medium", "preset", preset)
-			noizeConfig = noize.MediumObfuscationConfig()
+			l.Info("Using MASQUE noize preset configuration", "preset", preset)
+
+			switch preset {
+			case "minimal":
+				noizeConfig = noize.MinimalObfuscationConfig()
+			case "light":
+				noizeConfig = noize.LightObfuscationConfig()
+			case "medium":
+				noizeConfig = noize.MediumObfuscationConfig()
+			case "heavy":
+				noizeConfig = noize.HeavyObfuscationConfig()
+			case "stealth":
+				noizeConfig = noize.StealthObfuscationConfig()
+			case "gfw":
+				noizeConfig = noize.GFWBypassConfig()
+			case "firewall":
+				noizeConfig = noize.FirewallBypassConfig()
+			case "none":
+				noizeConfig = nil
+				l.Info("Noize disabled (preset=none)")
+			default:
+				l.Warn("Unknown noize preset, using medium", "preset", preset)
+				noizeConfig = noize.MediumObfuscationConfig()
+			}
 		}
 	}
 
