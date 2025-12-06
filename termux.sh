@@ -46,7 +46,7 @@ install() {
     pkg install openssh -y
     check_dependencies
 
-    if wget https://github.com/bepass-org/vwarp/releases/latest/download/vwarp_android-arm64.zip &&
+    if wget https://github.com/voidr3aper-anon/vwarp/releases/latest/download/vwarp_android-arm64.zip &&
         unzip vwarp_android-arm64.zip &&
         mv vwarp warp &&
         chmod +x warp &&
@@ -85,7 +85,7 @@ install_arm() {
         *) echo -e "${red}Unsupported architecture.${rest}"; return ;;
     esac
 
-    WARP_URL="https://github.com/bepass-org/vwarp/releases/latest/download/vwarp_linux-$ARCH.zip"
+    WARP_URL="https://github.com/voidr3aper-anon/vwarp/releases/latest/download/vwarp_linux-$ARCH.zip"
 
     if wget "$WARP_URL" &&
         unzip "vwarp_linux-$ARCH.zip" &&
