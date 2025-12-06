@@ -198,7 +198,7 @@ For more detailed examples and configurations, see:
 ### Termux
 
 ```
-bash <(curl -fsSL https://raw.githubusercontent.com/bepass-org/vwarp/master/termux.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/voidr3aper-anon/Vwarp/master/termux.sh)
 ```
 ![1](https://github.com/Ptechgithub/configs/blob/main/media/18.jpg?raw=true)
 
