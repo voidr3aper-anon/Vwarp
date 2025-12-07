@@ -133,8 +133,8 @@ func NewMasqueAdapter(ctx context.Context, cfg AdapterConfig) (*MasqueAdapter, e
 		}
 
 		// Validate registration data
-		if len(updatedAccountData.Config.Peers) == 0 || updatedAccountData.Config.Peers[0].Endpoint.V4 == "" || 
-		   updatedAccountData.Config.Peers[0].PublicKey == "" || updatedAccountData.ID == "" {
+		if len(updatedAccountData.Config.Peers) == 0 || updatedAccountData.Config.Peers[0].Endpoint.V4 == "" ||
+			updatedAccountData.Config.Peers[0].PublicKey == "" || updatedAccountData.ID == "" {
 			return nil, fmt.Errorf("registration failed: incomplete data returned")
 		}
 
@@ -162,8 +162,8 @@ func NewMasqueAdapter(ctx context.Context, cfg AdapterConfig) (*MasqueAdapter, e
 		}
 
 		// Verify config was saved correctly
-		if err := config.LoadConfig(cfg.ConfigPath); err != nil || 
-		   config.AppConfig.PrivateKey == "" || config.AppConfig.ID == "" {
+		if err := config.LoadConfig(cfg.ConfigPath); err != nil ||
+			config.AppConfig.PrivateKey == "" || config.AppConfig.ID == "" {
 			return nil, fmt.Errorf("failed to verify saved config")
 		}
 

@@ -340,7 +340,6 @@ func GFWBypassConfig() *NoizeConfig {
 	}
 }
 
-// NoObfuscationConfig - disable all obfuscation
 func NoObfuscationConfig() *NoizeConfig {
 	return &NoizeConfig{
 		Jc:              0,
@@ -354,20 +353,31 @@ func NoObfuscationConfig() *NoizeConfig {
 // MinimalObfuscationConfig - very light obfuscation, least likely to break handshake
 func MinimalObfuscationConfig() *NoizeConfig {
 	return &NoizeConfig{
-		// Minimal obfuscation - just a few junk packets after handshake
-		PaddingMin:      0,
-		PaddingMax:      0,
-		RandomPadding:   false,
-		Jc:              12, // Very few junk packets
-		JcBeforeHS:      4,  // No junk before handshake
-		JcAfterI1:       4,  // No junk after I1
-		JcDuringHS:      4,  // No junk during handshake
-		JcAfterHS:       3,  // Only after handshake
-		Jmin:            0,
-		Jmax:            0,
-		FragmentInitial: false, // Don't fragment
-		HandshakeDelay:  0,     // No delay
-		JunkInterval:    5 * time.Millisecond,
-		AllowZeroSize:   true,
+		I1:               "<b 474554202f20485454502f312e31><r 8>", // HTTP GET signature
+		FragmentSize:     1280,
+		FragmentInitial:  true,
+		FragmentDelay:    3 * time.Millisecond, // Don't fragment to avoid complexity
+		PaddingMin:       1,                    // Small padding to change packet size
+		PaddingMax:       0,                    // Variable padding
+		RandomPadding:    false,
+		Jc:               8,                    // Total junk packets
+		JcBeforeHS:       3,                    // Junk before handshake
+		JcAfterI1:        2,                    // Junk after signature
+		JcDuringHS:       3,                    // Junk during handshake
+		JcAfterHS:        4,                    // Junk after handshake
+		Jmin:             40,                   // Minimum junk size (realistic)
+		Jmax:             1285,                 // Maximum junk size
+		JunkInterval:     5 * time.Millisecond, // Small delay between junk
+		JunkRandom:       true,
+		HandshakeDelay:   5 * time.Millisecond, // Small delay before handshake
+		MimicProtocol:    "",                   // Mimic HTTPS traffic
+		RandomDelay:      true,
+		DelayMin:         5 * time.Millisecond,
+		DelayMax:         15 * time.Millisecond,
+		SNIFragmentation: true, // Keep simple for now
+		UseTimestamp:     true,
+		UseNonce:         true, // Add some randomness
+		RandomizeInitial: true, // Randomize initial packet
+		AllowZeroSize:    true, // Don't allow zero size
 	}
 }

@@ -8,13 +8,14 @@ import (
 	"net/netip"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/adrg/xdg"
 	"github.com/bepass-org/vwarp/app"
+	"github.com/bepass-org/vwarp/config/noize"
 	p "github.com/bepass-org/vwarp/psiphon"
 	"github.com/bepass-org/vwarp/warp"
-	"github.com/bepass-org/vwarp/wireguard/preflightbind"
 	"github.com/bepass-org/vwarp/wiresocks"
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffval"
@@ -33,9 +34,8 @@ type rootConfig struct {
 	dns                string
 	gool               bool
 	psiphon            bool
-	masque             bool
-	masqueAutoFallback bool
-	masquePreferred    bool
+	masque          bool
+	masquePreferred bool
 	country            string
 	scan               bool
 	rtt                time.Duration
@@ -46,29 +46,14 @@ type rootConfig struct {
 	testUrl            string
 	config             string
 
-	// AtomicNoize WireGuard configuration
-	AtomicNoizeEnable         bool
-	AtomicNoizeI1             string
-	AtomicNoizeI2             string
-	AtomicNoizeI3             string
-	AtomicNoizeI4             string
-	AtomicNoizeI5             string
-	AtomicNoizeS1             int
-	AtomicNoizeS2             int
-	AtomicNoizeJc             int
-	AtomicNoizeJmin           int
-	AtomicNoizeJmax           int
-	AtomicNoizeJcAfterI1      int
-	AtomicNoizeJcBeforeHS     int
-	AtomicNoizeJcAfterHS      int
-	AtomicNoizeJunkInterval   time.Duration
-	AtomicNoizeAllowZeroSize  bool
-	AtomicNoizeHandshakeDelay time.Duration
+	// Unified Noize configuration
+	noize                bool   // Enable noize for active protocol(s)
+	noizePreset          string // Unified preset for both WireGuard and MASQUE (minimal, light, medium, heavy, stealth, gfw, firewall)
+	noizeConfig          string // Path to unified noize configuration JSON file
+	noizeExport          string // Export preset to file path
 
-	// MASQUE Noize configuration
-	masqueNoize       bool
-	masqueNoizePreset string
-	masqueNoizeConfig string // Path to custom noize config JSON file
+	// Deprecated MASQUE Noize configuration (for backward compatibility)
+	masqueNoizeConfigOld string // Deprecated: use --noize-config
 
 	// SOCKS proxy configuration
 	proxyAddress string
@@ -129,29 +114,30 @@ func newRootCmd() *rootConfig {
 		Usage:    "enable MASQUE mode (connect to warp via MASQUE proxy)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "masque-auto-fallback",
-		Value:    ffval.NewValueDefault(&cfg.masqueAutoFallback, false),
-		Usage:    "automatically fallback to WireGuard if MASQUE fails",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
 		LongName: "masque-preferred",
 		Value:    ffval.NewValueDefault(&cfg.masquePreferred, false),
 		Usage:    "prefer MASQUE over WireGuard (with automatic fallback)",
 	})
+	// Unified noize configuration flags
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "masque-noize",
-		Value:    ffval.NewValueDefault(&cfg.masqueNoize, false),
-		Usage:    "enable MASQUE QUIC obfuscation (helps bypass DPI/censorship)",
+		LongName: "noize",
+		Value:    ffval.NewValueDefault(&cfg.noize, false),
+		Usage:    "enable noize obfuscation for active protocol (WireGuard/MASQUE)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "masque-noize-preset",
-		Value:    ffval.NewValueDefault(&cfg.masqueNoizePreset, "medium"),
-		Usage:    "MASQUE noize preset: light, medium, heavy, stealth, gfw, firewall (default: medium)",
+		LongName: "noize-preset",
+		Value:    ffval.NewValueDefault(&cfg.noizePreset, "medium"),
+		Usage:    "noize preset for active protocol: minimal, light, medium, heavy, stealth, gfw, firewall",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "masque-noize-config",
-		Value:    ffval.NewValueDefault(&cfg.masqueNoizeConfig, ""),
-		Usage:    "path to custom MASQUE noize configuration JSON file (overrides preset)",
+		LongName: "noize-config",
+		Value:    ffval.NewValueDefault(&cfg.noizeConfig, ""),
+		Usage:    "path to noize configuration JSON file for active protocol",
+	})
+	cfg.flags.AddFlag(ff.FlagConfig{
+		LongName: "noize-export",
+		Value:    ffval.NewValueDefault(&cfg.noizeExport, ""),
+		Usage:    "export preset to JSON file (e.g., --noize-export medium:config.json)",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
 		LongName: "cfon",
@@ -198,91 +184,7 @@ func newRootCmd() *rootConfig {
 		Value:     ffval.NewValueDefault(&cfg.config, ""),
 	})
 
-	// AtomicNoize WireGuard flags
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-enable",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeEnable, false),
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-i1",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeI1, ""),
-		Usage:    "AtomicNoize I1 signature packet in CPS format (e.g., '<b 0xc200...>'). Required for obfuscation.",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-i2",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeI2, "1"),
-		Usage:    "AtomicNoize I2 signature packet (CPS format or simple number)",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-i3",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeI3, "2"),
-		Usage:    "AtomicNoize I3 signature packet (CPS format or simple number)",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-i4",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeI4, "3"),
-		Usage:    "AtomicNoize I4 signature packet (CPS format or simple number)",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-i5",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeI5, "4"),
-		Usage:    "AtomicNoize I5 signature packet (CPS format or simple number)",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-s1",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeS1, 0),
-		Usage:    "AtomicNoize S1 random prefix for Init packets (0-64 bytes) - disabled for WARP compatibility",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-s2",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeS2, 0),
-		Usage:    "AtomicNoize S2 random prefix for Response packets (0-64 bytes) - disabled for WARP compatibility",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-jc",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJc, 4),
-		Usage:    "Total number of junk packets to send (0-128)",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-jmin",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJmin, 40),
-		Usage:    "Minimum junk packet size in bytes",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-jmax",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJmax, 70),
-		Usage:    "Maximum junk packet size in bytes",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-jc-after-i1",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJcAfterI1, 0),
-		Usage:    "Number of junk packets to send immediately after I1 packet",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-jc-before-hs",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJcBeforeHS, 0),
-		Usage:    "Number of junk packets to send before handshake initiation",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-jc-after-hs",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJcAfterHS, 0),
-		Usage:    "Number of junk packets to send after handshake (auto-calculated as Jc - JcBeforeHS - JcAfterI1)",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-junk-interval",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeJunkInterval, 10*time.Millisecond),
-		Usage:    "Time interval between sending junk packets (e.g., 10ms, 50ms)",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-allow-zero-size",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeAllowZeroSize, false),
-		Usage:    "Allow zero-size junk packets (may not work with all UDP implementations)",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "atomicnoize-handshake-delay",
-		Value:    ffval.NewValueDefault(&cfg.AtomicNoizeHandshakeDelay, 0*time.Millisecond),
-		Usage:    "Delay before actual WireGuard handshake after I-sequence (e.g., 50ms, 100ms)",
-	})
+
 	cfg.flags.AddFlag(ff.FlagConfig{
 		LongName: "proxy",
 		Value:    ffval.NewValueDefault(&cfg.proxyAddress, ""),
@@ -303,6 +205,22 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 		l = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	}
 
+	// Handle noize export functionality
+	if c.noizeExport != "" {
+		return c.handleNoizeExport(l)
+	}
+
+	// Show deprecation warnings
+	c.showDeprecationWarnings(l)
+
+	// Handle noize export functionality
+	if c.noizeExport != "" {
+		return c.handleNoizeExport(l)
+	}
+
+	// Show deprecation warnings
+	c.showDeprecationWarnings(l)
+
 	if c.psiphon && c.gool {
 		fatal(l, errors.New("can't use cfon and gool at the same time"))
 	}
@@ -317,10 +235,6 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 
 	if c.masque && c.masquePreferred {
 		fatal(l, errors.New("can't use masque and masque-preferred at the same time"))
-	}
-
-	if c.masqueAutoFallback && !c.masque {
-		fatal(l, errors.New("masque-auto-fallback requires masque mode to be enabled"))
 	}
 
 	if c.masquePreferred && c.gool {
@@ -362,17 +276,17 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 		DnsAddr:            dnsAddr,
 		Gool:               c.gool,
 		Masque:             c.masque,
-		MasqueAutoFallback: c.masqueAutoFallback,
 		MasquePreferred:    c.masquePreferred,
-		MasqueNoize:        c.masqueNoize,
-		MasqueNoizePreset:  c.masqueNoizePreset,
-		MasqueNoizeConfig:  c.masqueNoizeConfig,
+		MasqueNoize:        c.noize && (c.masque || c.masquePreferred), // Enable if noize requested and MASQUE active
+		MasqueNoizePreset:  c.noizePreset,
+		MasqueNoizeConfig:  c.masqueNoizeConfigOld, // Keep old field for backward compatibility
 		FwMark:             c.fwmark,
 		WireguardConfig:    c.wgConf,
 		Reserved:           c.reserved,
 		TestURL:            c.testUrl,
-		AtomicNoizeConfig:  c.buildAtomicNoizeConfig(),
+		AtomicNoizeConfig:  nil, // Use unified config system instead
 		ProxyAddress:       c.proxyAddress,
+		UnifiedNoizeConfig: c.buildUnifiedNoizeConfig(),
 	}
 
 	switch {
@@ -422,29 +336,76 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 	return nil
 }
 
-// buildAtomicNoizeConfig creates an AtomicNoizeConfig from the CLI flags
-func (c *rootConfig) buildAtomicNoizeConfig() *preflightbind.AtomicNoizeConfig {
-	// Only create config if AtomicNoize is explicitly enabled
-	if !c.AtomicNoizeEnable {
+
+
+// buildUnifiedNoizeConfig creates a unified noize configuration from CLI flags
+func (c *rootConfig) buildUnifiedNoizeConfig() *noize.UnifiedNoizeConfig {
+	// If noize is not enabled, return nil
+	if !c.noize && c.noizeConfig == "" {
 		return nil
 	}
 
-	return &preflightbind.AtomicNoizeConfig{
-		I1:             c.AtomicNoizeI1,
-		I2:             c.AtomicNoizeI2,
-		I3:             c.AtomicNoizeI3,
-		I4:             c.AtomicNoizeI4,
-		I5:             c.AtomicNoizeI5,
-		S1:             c.AtomicNoizeS1,
-		S2:             c.AtomicNoizeS2,
-		Jc:             c.AtomicNoizeJc,
-		Jmin:           c.AtomicNoizeJmin,
-		Jmax:           c.AtomicNoizeJmax,
-		JcAfterI1:      c.AtomicNoizeJcAfterI1,
-		JcBeforeHS:     c.AtomicNoizeJcBeforeHS,
-		JcAfterHS:      c.AtomicNoizeJcAfterHS,
-		JunkInterval:   c.AtomicNoizeJunkInterval,
-		AllowZeroSize:  c.AtomicNoizeAllowZeroSize,
-		HandshakeDelay: c.AtomicNoizeHandshakeDelay,
+	loader := noize.NewConfigLoader()
+
+	// Handle custom config file (takes precedence)
+	if c.noizeConfig != "" {
+		config, err := loader.LoadFromFile(c.noizeConfig)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load noize config %s: %v\n", c.noizeConfig, err)
+			return nil
+		}
+		return config
+	}
+
+	// Handle preset-based config
+	if c.noize {
+		config, err := loader.LoadFromPreset(c.noizePreset)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: invalid noize preset %s: %v\n", c.noizePreset, err)
+			return nil
+		}
+
+		// Enable protocols based on active mode
+		if c.masque || c.masquePreferred {
+			// MASQUE mode - enable both WireGuard and MASQUE noize
+			config.EnableWireGuard(c.noizePreset)
+			config.EnableMASQUE(c.noizePreset)
+		} else {
+			// Regular WireGuard mode - enable only WireGuard noize
+			config.EnableWireGuard(c.noizePreset)
+		}
+
+		return config
+	}
+
+	return nil
+}
+
+// handleNoizeExport handles the --noize-export functionality
+func (c *rootConfig) handleNoizeExport(l *slog.Logger) error {
+	// Parse preset:filepath format
+	parts := strings.Split(c.noizeExport, ":")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid export format, use: preset:filepath (e.g., light:config.json)")
+	}
+
+	presetName := parts[0]
+	filePath := parts[1]
+
+	loader := noize.NewConfigLoader()
+	if err := loader.ExportPresetToFile(presetName, filePath); err != nil {
+		return fmt.Errorf("failed to export preset: %w", err)
+	}
+
+	l.Info("exported preset configuration", "preset", presetName, "file", filePath)
+	fmt.Printf("Preset '%s' exported to '%s'\n", presetName, filePath)
+	fmt.Println("You can now customize the configuration and use it with --noize-config")
+	return nil
+}
+
+// showDeprecationWarnings shows warnings for deprecated CLI flags
+func (c *rootConfig) showDeprecationWarnings(l *slog.Logger) {
+	if c.masqueNoizeConfigOld != "" {
+		l.Warn("--masque-noize-config is deprecated, use --noize-config for unified configuration")
 	}
 }

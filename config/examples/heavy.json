@@ -1,0 +1,56 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "Heavy Obfuscation",
+    "description": "Strong obfuscation for strict censorship environments, higher latency but better bypass capability",
+    "author": "vwarp",
+    "created_at": "2025-12-06T00:00:00Z"
+  },
+  "wireguard": {
+    "enabled": true,
+    "preset": "heavy",
+    "atomicnoize": {
+      "i1": "<b 0xc200><t><r 32><p 64>",
+      "i2": "<r 16>",
+      "i3": "<r 24>",
+      "jc": 8,
+      "jmin": 60,
+      "jmax": 120,
+      "jc_after_i1": 2,
+      "jc_before_hs": 3,
+      "jc_after_hs": 3,
+      "junk_interval": "15ms",
+      "allow_zero_size": false,
+      "handshake_delay": "25ms"
+    }
+  },
+  "masque": {
+    "enabled": true,
+    "preset": "heavy",
+    "config": {
+      "i1": "<b 0d0a0d0a><t><r 32><p 64>",
+      "i2": "<r 16>",
+      "i3": "<r 24>",
+      "jc": 6,
+      "jmin": 64,
+      "jmax": 128,
+      "jc_before_hs": 3,
+      "jc_after_i1": 1,
+      "jc_during_hs": 1,
+      "jc_after_hs": 1,
+      "junk_interval": "20ms",
+      "junk_random": true,
+      "fragment_initial": true,
+      "fragment_size": 256,
+      "fragment_delay": "5ms",
+      "padding_min": 32,
+      "padding_max": 128,
+      "random_padding": true,
+      "handshake_delay": "50ms",
+      "random_delay": true,
+      "delay_min": "5ms",
+      "delay_max": "25ms",
+      "mimic_protocol": "https"
+    }
+  }
+}
