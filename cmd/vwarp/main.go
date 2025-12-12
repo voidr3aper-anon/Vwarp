@@ -12,7 +12,6 @@ import (
 
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
-	"github.com/peterbourgon/ff/v4/ffjson"
 )
 
 const appName = "vwarp"
@@ -78,11 +77,7 @@ func main() {
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	rootCmd := newRootCmd()
 	versionCmd(rootCmd)
-	err := rootCmd.command.Parse(
-		args,
-		ff.WithConfigFileFlag("config"),
-		ff.WithConfigFileParser(ffjson.Parse),
-	)
+	err := rootCmd.command.Parse(args)
 
 	switch {
 	case errors.Is(err, ff.ErrHelp):

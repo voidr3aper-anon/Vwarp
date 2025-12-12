@@ -13,6 +13,7 @@ import (
 
 	"github.com/adrg/xdg"
 	"github.com/bepass-org/vwarp/app"
+	"github.com/bepass-org/vwarp/config"
 	"github.com/bepass-org/vwarp/config/noize"
 	p "github.com/bepass-org/vwarp/psiphon"
 	"github.com/bepass-org/vwarp/warp"
@@ -49,11 +50,10 @@ type rootConfig struct {
 	// Unified Noize configuration
 	noize       bool   // Enable noize for active protocol(s)
 	noizePreset string // Unified preset for both WireGuard and MASQUE (minimal, light, medium, heavy, stealth, gfw, firewall)
-	noizeConfig string // Path to unified noize configuration JSON file
 	noizeExport string // Export preset to file path
 
 	// Deprecated MASQUE Noize configuration (for backward compatibility)
-	masqueNoizeConfigOld string // Deprecated: use --noize-config
+	masqueNoizeConfigOld string // Deprecated: use unified config file
 
 	// SOCKS proxy configuration
 	proxyAddress string
@@ -128,11 +128,6 @@ func newRootCmd() *rootConfig {
 		LongName: "noize-preset",
 		Value:    ffval.NewValueDefault(&cfg.noizePreset, "medium"),
 		Usage:    "noize preset for active protocol: minimal, light, medium, heavy, stealth, gfw, firewall",
-	})
-	cfg.flags.AddFlag(ff.FlagConfig{
-		LongName: "noize-config",
-		Value:    ffval.NewValueDefault(&cfg.noizeConfig, ""),
-		Usage:    "path to noize configuration JSON file for active protocol",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
 		LongName: "noize-export",
@@ -212,13 +207,23 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 	// Show deprecation warnings
 	c.showDeprecationWarnings(l)
 
-	// Handle noize export functionality
-	if c.noizeExport != "" {
-		return c.handleNoizeExport(l)
-	}
+	// Load unified configuration if provided
+	var unifiedConfig *config.UnifiedConfig
+	if c.config != "" {
+		var err error
+		unifiedConfig, err = config.LoadFromFile(c.config)
+		if err != nil {
+			fatal(l, fmt.Errorf("failed to load config file: %w", err))
+		}
 
-	// Show deprecation warnings
-	c.showDeprecationWarnings(l)
+		if err := unifiedConfig.Validate(); err != nil {
+			fatal(l, fmt.Errorf("invalid configuration: %w", err))
+		}
+
+		// Override CLI flags with config file values
+		c.applyUnifiedConfig(unifiedConfig)
+		l.Info("loaded unified configuration", "file", c.config)
+	}
 
 	if c.psiphon && c.gool {
 		fatal(l, errors.New("can't use cfon and gool at the same time"))
@@ -285,7 +290,7 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 		TestURL:            c.testUrl,
 		AtomicNoizeConfig:  nil, // Use unified config system instead
 		ProxyAddress:       c.proxyAddress,
-		UnifiedNoizeConfig: c.buildUnifiedNoizeConfig(),
+		UnifiedNoizeConfig: c.buildUnifiedNoizeConfig(unifiedConfig),
 	}
 
 	switch {
@@ -335,47 +340,91 @@ func (c *rootConfig) exec(ctx context.Context, args []string) error {
 	return nil
 }
 
-// buildUnifiedNoizeConfig creates a unified noize configuration from CLI flags
-func (c *rootConfig) buildUnifiedNoizeConfig() *noize.UnifiedNoizeConfig {
-	// If noize is not enabled, return nil
-	if !c.noize && c.noizeConfig == "" && c.noizePreset == "" {
+// applyUnifiedConfig applies settings from the unified config file to CLI flags
+func (c *rootConfig) applyUnifiedConfig(uc *config.UnifiedConfig) {
+	// Override CLI flags with config file values (config file takes precedence)
+	if uc.Bind != "" && c.bind == "127.0.0.1:8086" {
+		c.bind = uc.Bind
+	}
+	if uc.Endpoint != "" && c.endpoint == "" {
+		c.endpoint = uc.Endpoint
+	}
+	if uc.Key != "" && c.key == "" {
+		c.key = uc.Key
+	}
+	if uc.DNS != "" && c.dns == "1.1.1.1" {
+		c.dns = uc.DNS
+	}
+	if uc.TestURL != "" && c.testUrl == "https://cp.cloudflare.com/" {
+		c.testUrl = uc.TestURL
+	}
+	if uc.Proxy != "" && c.proxyAddress == "" {
+		c.proxyAddress = uc.Proxy
+	}
+
+	// Set protocol modes based on config
+	if uc.WireGuard != nil && uc.WireGuard.Enabled {
+		if uc.WireGuard.Config != "" && c.wgConf == "" {
+			c.wgConf = uc.WireGuard.Config
+		}
+		if uc.WireGuard.Reserved != "" && c.reserved == "" {
+			c.reserved = uc.WireGuard.Reserved
+		}
+		if uc.WireGuard.FwMark != 0 && c.fwmark == 0 {
+			c.fwmark = uc.WireGuard.FwMark
+		}
+	}
+
+	if uc.MASQUE != nil && uc.MASQUE.Enabled {
+		c.masque = true
+		if uc.MASQUE.Preferred {
+			c.masquePreferred = true
+		}
+	}
+
+	if uc.Psiphon != nil && uc.Psiphon.Enabled {
+		c.psiphon = true
+		if uc.Psiphon.Country != "" && c.country == "" {
+			c.country = uc.Psiphon.Country
+		}
+	}
+}
+
+// buildUnifiedNoizeConfig creates unified noize config from both CLI flags and config file
+func (c *rootConfig) buildUnifiedNoizeConfig(uc *config.UnifiedConfig) *noize.UnifiedNoizeConfig {
+	// Priority: Config file > CLI flags
+	if uc != nil {
+		// If config file has noize config, use it
+		if noizeConfig, err := uc.GetNoizeConfig(); err == nil && noizeConfig != nil {
+			return noizeConfig
+		}
+	}
+
+	// Fall back to CLI flags if no config file or no noize in config file
+	if !c.noize && c.noizePreset == "" {
 		return nil
 	}
 
 	loader := noize.NewConfigLoader()
 
-	// Handle custom config file (takes precedence)
-	if c.noizeConfig != "" {
-		config, err := loader.LoadFromFile(c.noizeConfig)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to load noize config %s: %v\n", c.noizeConfig, err)
-			return nil
-		}
-		return config
+	// Handle preset-based config from CLI flags
+	config, err := loader.LoadFromPreset(c.noizePreset)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: invalid noize preset %s: %v\n", c.noizePreset, err)
+		return nil
 	}
 
-	// Handle preset-based config
-	if c.noize || c.noizePreset != "" {
-		config, err := loader.LoadFromPreset(c.noizePreset)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: invalid noize preset %s: %v\n", c.noizePreset, err)
-			return nil
-		}
-
-		// Enable protocols based on active mode
-		if c.masque || c.masquePreferred {
-			// MASQUE mode - enable both WireGuard and MASQUE noize
-			config.EnableWireGuard(c.noizePreset)
-			config.EnableMASQUE(c.noizePreset)
-		} else {
-			// Regular WireGuard mode - enable only WireGuard noize
-			config.EnableWireGuard(c.noizePreset)
-		}
-
-		return config
+	// Enable protocols based on active mode
+	if c.masque || c.masquePreferred {
+		// MASQUE mode - enable both WireGuard and MASQUE noize
+		config.EnableWireGuard(c.noizePreset)
+		config.EnableMASQUE(c.noizePreset)
+	} else {
+		// Regular WireGuard mode - enable only WireGuard noize
+		config.EnableWireGuard(c.noizePreset)
 	}
 
-	return nil
+	return config
 }
 
 // handleNoizeExport handles the --noize-export functionality
@@ -396,13 +445,13 @@ func (c *rootConfig) handleNoizeExport(l *slog.Logger) error {
 
 	l.Info("exported preset configuration", "preset", presetName, "file", filePath)
 	fmt.Printf("Preset '%s' exported to '%s'\n", presetName, filePath)
-	fmt.Println("You can now customize the configuration and use it with --noize-config")
+	fmt.Println("You can now customize the configuration and use it with --config")
 	return nil
 }
 
 // showDeprecationWarnings shows warnings for deprecated CLI flags
 func (c *rootConfig) showDeprecationWarnings(l *slog.Logger) {
 	if c.masqueNoizeConfigOld != "" {
-		l.Warn("--masque-noize-config is deprecated, use --noize-config for unified configuration")
+		l.Warn("--masque-noize-config is deprecated, use --config for unified configuration")
 	}
 }

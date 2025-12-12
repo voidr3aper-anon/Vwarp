@@ -17,30 +17,34 @@ vwarp is an open-source implementation of Cloudflare's Warp, enhanced with Psiph
 # Basic WARP connection
 vwarp --bind 127.0.0.1:8086
 
-# MASQUE mode with noize obfuscation (bypass DPI/censorship)
-vwarp --masque --masque-noize --masque-noize-preset light
+# MASQUE mode with obfuscation
+vwarp --masque --noize-preset moderate
 
-# With AtomicNoize obfuscation (WireGuard anti-censorship)
-vwarp --atomicnoize-enable --bind 127.0.0.1:8086
+# WireGuard with AtomicNoize obfuscation
+vwarp --noize-preset heavy
+
+# Warp-in-Warp (location changing)
+vwarp --gool --key your-warp-license-key
+
+# Using unified configuration file (recommended)
+vwarp --config config/examples/complete-config.json --masque
 
 # Through SOCKS5 proxy (double-VPN)
-vwarp --proxy socks5://127.0.0.1:1080 --bind 127.0.0.1:8086
-
-# Maximum privacy (MASQUE + noize + SOCKS5 proxy)
-vwarp --masque --masque-noize --masque-noize-preset heavy --proxy socks5://127.0.0.1:1080
+vwarp --proxy socks5://127.0.0.1:1080 --masque --noize-preset moderate
 ```
 
-📖 **Need help?** Check out the [MASQUE Noize Guide](docs/MASQUE_NOIZE_GUIDE.md), [SOCKS5 Proxy Guide](SOCKS_PROXY_GUIDE.md) and [AtomicNoize Guide](cmd/docs/ATOMICNOIZE_README.md)
+📖 **Need help?** Check out the [Configuration Guide](config/examples/README.md) and [Complete Obfuscation Guide](docs/VWARP_OBFUSCATION_GUIDE.md)
 
 ## Features
 
 - **Warp Integration**: Leverages Cloudflare's Warp to provide a fast and secure VPN service.
 - **MASQUE Tunneling**: Connect to Warp via MASQUE proxy protocol for enhanced censorship resistance.
-- **MASQUE Noize Obfuscation**: Advanced packet obfuscation system to bypass Deep Packet Inspection (DPI). [Learn more](docs/MASQUE_NOIZE_GUIDE.md)
+- **MASQUE Noize Obfuscation**: Advanced QUIC packet obfuscation system to bypass Deep Packet Inspection (DPI).
+- **AtomicNoize Protocol**: WireGuard obfuscation protocol for enhanced privacy and censorship resistance.
+- **Unified Configuration**: Single configuration file format for all obfuscation methods.
 - **Psiphon Chaining**: Integrates with Psiphon for censorship circumvention, allowing seamless access to the internet in restrictive environments.
 - **Warp in Warp Chaining**: Chaining two instances of warp together to bypass location restrictions.
-- **AtomicNoize Protocol**: Advanced obfuscation protocol for enhanced privacy and censorship resistance. [Learn more](cmd/docs/ATOMICNOIZE_README.md)
-- **SOCKS5 Proxy Chaining**: Route WireGuard traffic through SOCKS5 proxies for double-VPN setups. [Learn more](SOCKS_PROXY_GUIDE.md)
+- **SOCKS5 Proxy Chaining**: Route WireGuard traffic through SOCKS5 proxies for double-VPN setups.
 - **SOCKS5 Proxy Server**: Includes a SOCKS5 proxy server for secure and private browsing.
 
 ## Getting Started
@@ -53,52 +57,36 @@ vwarp --masque --masque-noize --masque-noize-preset heavy --proxy socks5://127.0
 ### Usage
 
 ```
-NAME
+COMMAND
   vwarp
 
+SUBCOMMANDS
+  version   displays version
+
 FLAGS
-  -v, --verbose                                enable verbose logging
-  -4                                           only use IPv4 for random warp endpoint
-  -6                                           only use IPv6 for random warp endpoint
-  -b, --bind STRING                            socks bind address (default: 127.0.0.1:8086)
-  -e, --endpoint STRING                        warp endpoint
-  -k, --key STRING                             warp key
-      --dns STRING                             DNS address (default: 1.1.1.1)
-      --gool                                   enable gool mode (warp in warp)
-      --cfon                                   enable psiphon mode (must provide country as well)
-      --country STRING                         psiphon country code (default: AT)
-      --scan                                   enable warp scanning
-      --rtt DURATION                            (default: 1s)
+  -v, --verbose               enable verbose logging
+  -4, --ipv4                  only use IPv4 for random warp/MASQUE endpoint
+  -6                          only use IPv6 for random warp endpoint
+  -b, --bind STRING           socks bind address (default: 127.0.0.1:8086)
+  -e, --endpoint STRING       warp endpoint
+  -k, --key STRING            warp key
+      --dns STRING            DNS address (default: 1.1.1.1)
+      --gool                  enable gool mode (warp in warp)
+      --masque                enable MASQUE mode (connect to warp via MASQUE proxy)
+      --masque-preferred      prefer MASQUE over WireGuard (with automatic fallback)
+      --noize-preset STRING   noize preset: light, moderate, heavy (applies to active protocol)
+      --noize-export STRING   export preset to JSON file (e.g., --noize-export moderate:config.json)
+      --cfon                  enable psiphon mode (must provide country as well)
+      --country STRING        psiphon country code (default: AT)
+      --scan                  enable warp scanning
+      --rtt DURATION           (default: 1s)
       --cache-dir STRING
-      --fwmark UINT32                           (default: 0)
+      --fwmark UINT32          (default: 0)
       --reserved STRING
       --wgconf STRING
-      --test-url STRING                         (default: http://connectivity.cloudflareclient.com/cdn-cgi/trace)
+      --test-url STRING        (default: http://connectivity.cloudflareclient.com/cdn-cgi/trace)
   -c, --config STRING
-      --atomicnoize-enable
-      --atomicnoize-i1 STRING                  AtomicNoize I1 signature packet in CPS format (e.g., '<b 0xc200...>'). Required for obfuscation.
-      --atomicnoize-i2 STRING                  AtomicNoize I2 signature packet (CPS format or simple number) (default: 1)
-      --atomicnoize-i3 STRING                  AtomicNoize I3 signature packet (CPS format or simple number) (default: 2)
-      --atomicnoize-i4 STRING                  AtomicNoize I4 signature packet (CPS format or simple number) (default: 3)
-      --atomicnoize-i5 STRING                  AtomicNoize I5 signature packet (CPS format or simple number) (default: 4)
-      --atomicnoize-s1 INT                     AtomicNoize S1 random prefix for Init packets (0-64 bytes) - disabled for WARP compatibility (default: 0)
-      --atomicnoize-s2 INT                     AtomicNoize S2 random prefix for Response packets (0-64 bytes) - disabled for WARP compatibility (default: 0)
-      --atomicnoize-jc INT                     Total number of junk packets to send (0-128) (default: 4)
-      --atomicnoize-jmin INT                   Minimum junk packet size in bytes (default: 40)
-      --atomicnoize-jmax INT                   Maximum junk packet size in bytes (default: 70)
-      --atomicnoize-jc-after-i1 INT            Number of junk packets to send immediately after I1 packet (default: 0)
-      --atomicnoize-jc-before-hs INT           Number of junk packets to send before handshake initiation (default: 0)
-      --atomicnoize-jc-after-hs INT            Number of junk packets to send after handshake (auto-calculated as Jc - JcBeforeHS - JcAfterI1) (default: 0)
-      --atomicnoize-junk-interval DURATION     Time interval between sending junk packets (e.g., 10ms, 50ms) (default: 10ms)
-      --atomicnoize-allow-zero-size            Allow zero-size junk packets (may not work with all UDP implementations)
-      --atomicnoize-handshake-delay DURATION   Delay before actual WireGuard handshake after I-sequence (e.g., 50ms, 100ms) (default: 0s)
-      --masque                                 enable MASQUE mode (connect to warp via MASQUE proxy)
-      --masque-auto-fallback                   automatically fallback to WireGuard if MASQUE fails
-      --masque-preferred                       prefer MASQUE over WireGuard (with automatic fallback)
-      --masque-noize                           enable MASQUE QUIC obfuscation (helps bypass DPI/censorship)
-      --masque-noize-preset STRING             MASQUE noize preset: light, medium, heavy, stealth, gfw, firewall (default: medium)
-      --masque-noize-config STRING             path to custom MASQUE noize configuration JSON file (overrides preset)
-      --proxy STRING                           SOCKS5 proxy address to route WireGuard traffic through (e.g., socks5://127.0.0.1:1080)
+      --proxy STRING          SOCKS5 proxy address to route WireGuard traffic through (e.g., socks5://127.0.0.1:1080)
 ```
 
 ### Basic Examples
@@ -111,18 +99,22 @@ vwarp --bind 127.0.0.1:8086
 #### MASQUE Mode with Noize Obfuscation
 ```bash
 # Light obfuscation (recommended for most users)
-vwarp --masque --masque-noize --masque-noize-preset light
+vwarp --masque --noize-preset light
 
 # Heavy obfuscation for strict censorship
-vwarp --masque --masque-noize --masque-noize-preset heavy
+vwarp --masque --noize-preset heavy
 
-# Custom configuration from JSON file
-vwarp --masque --masque-noize --masque-noize-config docs/examples/basic-obfuscation.json
+# Using unified configuration file
+vwarp --config config/examples/complete-config.json --masque
 ```
 
-#### With AtomicNoize Obfuscation (WireGuard)
+#### WireGuard with AtomicNoize Obfuscation
 ```bash
-vwarp --atomicnoize-enable --atomicnoize-packet-size 1280 --bind 127.0.0.1:8086
+# Default WireGuard with moderate obfuscation
+vwarp --noize-preset moderate
+
+# Heavy obfuscation for censored networks
+vwarp --noize-preset heavy --bind 127.0.0.1:8086
 ```
 
 #### Through SOCKS5 Proxy (Double VPN)
@@ -144,12 +136,15 @@ vwarp --gool --bind 127.0.0.1:8086
 
 #### Maximum Privacy Setup
 ```bash
+# Using CLI flags
 vwarp \
   --proxy socks5://127.0.0.1:1080 \
-  --atomicnoize-enable \
-  --atomicnoize-packet-size 1280 \
-  --atomicnoize-junk-size 50 \
+  --masque \
+  --noize-preset heavy \
   --verbose
+
+# Using configuration file (recommended)
+vwarp --config my-stealth-config.json --proxy socks5://127.0.0.1:1080
 ```
 
 #### Scan for Best Endpoint
@@ -158,8 +153,9 @@ vwarp --scan --rtt 800ms
 ```
 
 For more detailed examples and configurations, see:
-- [SOCKS5 Proxy Chaining Guide](SOCKS_PROXY_GUIDE.md)
-- [AtomicNoize Protocol Guide](cmd/docs/ATOMICNOIZE_README.md)
+- [Configuration Guide](config/examples/README.md) - Complete setup guide
+- [SOCKS5 Proxy Guide](docs/SOCKS_PROXY_GUIDE.md) - Double-VPN setups
+- [Obfuscation Guide](docs/VWARP_OBFUSCATION_GUIDE.md) - Advanced censorship bypass
 
 ### Country Codes for Psiphon
 
@@ -213,11 +209,102 @@ bash <(curl -fsSL https://raw.githubusercontent.com/bepass-org/vwarp/master/term
 - برای اسکن ای پی سالم وارپ از دستور `warp --scan` استفاده کنید. 
 - برای ترکیب (chain) دو کانفیگ برای تغییر لوکیشن از دستور `warp --gool` استفاده کنید. 
 
-## Documentation
+## 📚 Documentation
 
-- **[SOCKS5 Proxy Chaining Guide](docs/SOCKS_PROXY_GUIDE.md)** - Complete guide for double-VPN setups
-- **[AtomicNoize Protocol](docs/ATOMICNOIZE_README.md)** - Advanced obfuscation protocol documentation
-- **[Configuration Examples](example_config.json)** - Sample configuration files(will place later)
+### 📦 Configuration & Setup
+- **[Unified Configuration Guide](config/examples/README.md)** - Complete configuration reference with all options
+- **[Sample Configurations](config/examples/)** - Production-ready config examples  
+- **[Configuration Examples](docs/examples/README.md)** - Obfuscation configurations for different scenarios
+- **[Production Deployment](docs/PRODUCTION_DEPLOYMENT.md)** - Enterprise deployment, monitoring & scaling
+
+### 🔗 Integration Guides  
+- **[Complete Obfuscation Guide](docs/VWARP_OBFUSCATION_GUIDE.md)** - Advanced censorship bypass techniques
+- **[SOCKS5 Proxy Chaining](docs/SOCKS_PROXY_GUIDE.md)** - Double-VPN and proxy routing
+
+### 🚀 Quick Examples
+
+**Lightweight Setup (Fast)**
+```bash
+vwarp --masque --noize-preset light
+```
+
+**Balanced Setup (Recommended)**  
+```json
+// my-config.json
+{
+  "bind": "127.0.0.1:8086",
+  "endpoint": "162.159.192.1:2408", 
+  "masque": {
+    "enabled": true,
+    "config": {
+      "Jc": 15,
+      "MimicProtocol": "https",
+      "fragment_initial": true
+    }
+  }
+}
+```
+```bash
+vwarp --config my-config.json
+```
+
+**Maximum Stealth (Heavy Obfuscation)**
+```bash
+vwarp --config config/examples/complete-config.json --proxy socks5://127.0.0.1:1080
+```
+
+## 🛠️ Configuration Examples
+
+### Basic Configuration File
+```json
+{
+  "version": "1.0",
+  "bind": "127.0.0.1:8086",
+  "endpoint": "162.159.192.1:2408",
+  "key": "your-warp-license-key-here",
+  "dns": "1.1.1.1",
+  "masque": {
+    "enabled": true,
+    "config": {
+      "Jc": 15,
+      "MimicProtocol": "https",
+      "fragment_initial": true,
+      "RandomPadding": true
+    }
+  }
+}
+```
+
+### Usage with Config File
+```bash
+# Create config file
+cp config/examples/complete-config.json my-production.json
+
+# Edit your settings
+nano my-production.json
+
+# Run with MASQUE mode
+vwarp --config my-production.json --masque
+
+# Run with WireGuard mode (default)
+vwarp --config my-production.json
+
+# Run with Warp-in-Warp mode
+vwarp --config my-production.json --gool
+```
+
+### Key Configuration Fields
+
+| Field | Description | Example |
+|-------|-------------|----------|
+| `bind` | SOCKS5 proxy listen address | `"127.0.0.1:8086"` |
+| `endpoint` | Cloudflare WARP endpoint | `"162.159.192.1:2408"` |
+| `key` | WARP+ license key (optional) | `"your-key-here"` |
+| `proxy` | Upstream SOCKS5 proxy | `"socks5://127.0.0.1:1080"` |
+| `masque.enabled` | Enable MASQUE mode | `true` |
+| `wireguard.reserved` | Reserved bytes (decimal) | `"1,2,3"` |
+
+⚠️ **Important**: Reserved bytes must be in decimal format (`"1,2,3"`) not hex (`"0x01,0x02,0x03"`)
 
 ## Acknowledgements
 
