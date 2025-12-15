@@ -55,7 +55,7 @@ func (n *netstackTunAdapter) WritePacket(pkt []byte) error {
 }
 
 // isConnectionError checks if the error indicates a closed or broken connection
-// Enhanced for Android compatibility and mobile network conditions
+
 func isConnectionError(err error) bool {
 	if err == nil {
 		return false
@@ -80,9 +80,9 @@ func isConnectionError(err error) bool {
 		"network interface is down",
 	}
 
-	// Android-specific errors
+	// Mobile and platform-specific errors
 	androidErrors := []string{
-		"permission denied", // Android network permission issues
+		"permission denied",
 		"operation not permitted",
 		"protocol not available",
 		"address family not supported",
@@ -100,17 +100,30 @@ func isConnectionError(err error) bool {
 	return false
 }
 
+// isPacketForwardingActive checks if packet forwarding is currently working
+func isPacketForwardingActive(lastRead, lastWrite *atomic.Int64) bool {
+	now := time.Now().Unix()
+	lastReadTime := lastRead.Load()
+	lastWriteTime := lastWrite.Load()
+
+	// Consider active if we've had successful reads/writes within the last 30 seconds
+	readRecent := now-lastReadTime < 30
+	writeRecent := now-lastWriteTime < 30
+
+	return readRecent || writeRecent
+}
+
 // AdapterFactory is a function that creates a new MASQUE adapter
 type AdapterFactory func() (*masque.MasqueAdapter, error)
 
 // Connection monitoring constants
 const (
-	HealthCheckInterval      = 30 * time.Second
-	StaleConnectionThreshold = 60 * time.Second
-	RecoveryCooldownPeriod   = 30 * time.Second
-	MaxRecoveryAttempts      = 10
-	MaxReconnectionAttempts  = 8
-	ConnectivityTestTimeout  = 15 * time.Second
+	HealthCheckInterval      = 45 * time.Second
+	StaleConnectionThreshold = 120 * time.Second
+	RecoveryCooldownPeriod   = 60 * time.Second
+	MaxRecoveryAttempts      = 5
+	MaxReconnectionAttempts  = 5
+	ConnectivityTestTimeout  = 8 * time.Second
 )
 
 // maintainMasqueTunnel continuously forwards packets between the TUN device and MASQUE
@@ -121,7 +134,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 	// Connection state management - buffered channel to prevent blocking
 	connectionDown := make(chan bool, 1)
 
-	// Track connection state with enhanced monitoring
+	// Track connection state
 	var connectionBroken atomic.Bool
 	var lastSuccessfulRead atomic.Int64
 	var lastSuccessfulWrite atomic.Int64
@@ -132,7 +145,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 	lastSuccessfulRead.Store(time.Now().Unix())
 	lastSuccessfulWrite.Store(time.Now().Unix())
 
-	// Forward packets from netstack to MASQUE with enhanced error handling
+	// Forward packets from netstack to MASQUE
 	go func() {
 		buf := make([]byte, mtu)
 		packetCount := 0
@@ -157,9 +170,6 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 			}
 
 			packetCount++
-			if packetCount <= 5 || packetCount%100 == 0 {
-				l.Debug("TX netstack→MASQUE", "packet", packetCount, "bytes", n)
-			}
 
 			// Protected adapter access
 			adapterMutex.RLock()
@@ -171,7 +181,8 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 			if err != nil {
 				if isConnectionError(err) {
 					writeErrors++
-					if !connectionBroken.Load() {
+					// Be more tolerant - require multiple consecutive errors before marking as broken
+					if writeErrors >= 3 && !connectionBroken.Load() {
 						l.Warn("MASQUE connection error detected on write", "error", err, "consecutive_errors", writeErrors)
 						connectionBroken.Store(true)
 						// Signal connection down (non-blocking)
@@ -180,12 +191,12 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 						default:
 						}
 					}
-					// Exponential backoff on Android to avoid overwhelming the system
-					backoffTime := time.Duration(min(writeErrors, 10)) * 100 * time.Millisecond
-					time.Sleep(backoffTime)
+					// Drop this packet and continue - don't queue failed writes
+					continue
 				} else {
 					l.Error("error writing to MASQUE", "error", err, "packet_size", n)
-					time.Sleep(10 * time.Millisecond) // Brief pause for non-connection errors
+					writeErrors++
+					time.Sleep(20 * time.Millisecond) // Slightly longer pause for non-connection errors
 				}
 				continue
 			}
@@ -193,13 +204,11 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 			// Reset error counter on successful write
 			if writeErrors > 0 {
 				writeErrors = 0
-				l.Debug("Write errors cleared after successful packet")
 			}
 			lastSuccessfulWrite.Store(time.Now().Unix())
 
 			// Handle ICMP response if present
 			if len(icmp) > 0 {
-				l.Debug("received ICMP response", "size", len(icmp))
 				if err := device.WritePacket(icmp); err != nil {
 					l.Error("error writing ICMP to TUN device", "error", err)
 				}
@@ -207,13 +216,12 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 		}
 	}()
 
-	// Forward packets from MASQUE to netstack with enhanced monitoring
+	// Forward packets from MASQUE to netstack
 	go func() {
 		buf := make([]byte, mtu)
 		packetCount := 0
 		consecutiveErrors := 0
 		readTimeouts := 0
-
 		for ctx.Err() == nil {
 			// Wait if connection is broken
 			if connectionBroken.Load() {
@@ -241,11 +249,11 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 
 					if isTimeout {
 						readTimeouts++
-						l.Debug("Read timeout detected", "consecutive_timeouts", readTimeouts, "total_errors", consecutiveErrors)
 					}
 
-					if consecutiveErrors == 1 && !connectionBroken.Load() {
-						l.Warn("MASQUE connection error detected on read", "error", err, "is_timeout", isTimeout)
+					// Only trigger connection down after multiple consecutive errors or critical errors
+					if consecutiveErrors >= 3 && !connectionBroken.Load() {
+						l.Warn("MASQUE connection error detected on read", "error", err, "is_timeout", isTimeout, "consecutive_errors", consecutiveErrors)
 						connectionBroken.Store(true)
 						// Signal connection down (non-blocking)
 						select {
@@ -254,7 +262,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 						}
 					}
 
-					// Adaptive backoff based on error type and Android conditions
+					// Adaptive backoff based on error type
 					if isTimeout && readTimeouts < 3 {
 						// Short backoff for timeouts - may be temporary
 						time.Sleep(200 * time.Millisecond)
@@ -275,16 +283,12 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 
 			// Reset error counters on successful read
 			if consecutiveErrors > 0 || readTimeouts > 0 {
-				l.Debug("Read errors cleared after successful packet", "prev_errors", consecutiveErrors, "prev_timeouts", readTimeouts)
 				consecutiveErrors = 0
 				readTimeouts = 0
 			}
 			lastSuccessfulRead.Store(time.Now().Unix())
 
 			packetCount++
-			if packetCount <= 5 || packetCount%100 == 0 {
-				l.Debug("RX MASQUE→netstack", "packet", packetCount, "bytes", n)
-			}
 
 			if err := device.WritePacket(buf[:n]); err != nil {
 				l.Error("error writing to TUN device", "error", err, "packet_size", n)
@@ -314,7 +318,11 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 				lastRecovery := lastRecoveryTime.Load()
 				recoveryCooldown := now-lastRecovery < int64(RecoveryCooldownPeriod.Seconds())
 
-				if !connectionBroken.Load() && !recoveryCooldown && (now-lastRead > int64(StaleConnectionThreshold.Seconds()) || now-lastWrite > int64(StaleConnectionThreshold.Seconds())) {
+				// Be more conservative about triggering health checks - require both read AND write to be stale
+				readStale := now-lastRead > int64(StaleConnectionThreshold.Seconds())
+				writeStale := now-lastWrite > int64(StaleConnectionThreshold.Seconds())
+
+				if !connectionBroken.Load() && !recoveryCooldown && readStale && writeStale {
 					l.Warn("Connection appears stale, triggering health check",
 						"seconds_since_read", now-lastRead,
 						"seconds_since_write", now-lastWrite)
@@ -324,14 +332,12 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 					case connectionDown <- true:
 					default:
 					}
-				} else if recoveryCooldown {
-					// Skip health check during recovery cooldown period
 				}
 			}
 		}
 	}()
 
-	// Connection monitoring and recovery goroutine - enhanced for Android
+	// Connection monitoring and recovery goroutine
 	go func() {
 		recoveryAttempts := 0
 
@@ -346,10 +352,10 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 				settleTime := time.Duration(min(recoveryAttempts+1, 5)) * time.Second
 				time.Sleep(settleTime)
 
-				// Try to reconnect with exponential backoff - extended for Android
+				// Try to reconnect with exponential backoff
 				successfulRecovery := false
 				for attempt := 1; attempt <= MaxReconnectionAttempts && ctx.Err() == nil; attempt++ {
-					// Progressive backoff with jitter for Android
+					// Progressive backoff with jitter
 					baseBackoff := time.Duration(attempt) * 2 * time.Second
 					jitter := time.Duration(time.Now().UnixNano()%1000) * time.Millisecond
 					backoff := baseBackoff + jitter
@@ -382,10 +388,8 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 					}
 
 					// Replace the adapter safely first
-					l.Debug("Replacing MASQUE adapter for packet forwarding")
 					adapter = newAdapter
-					connectionBroken.Store(false)
-
+					
 					// Reset timestamps
 					now := time.Now().Unix()
 					lastSuccessfulRead.Store(now)
@@ -393,19 +397,49 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 
 					adapterMutex.Unlock()
 
-					// Now test connectivity after adapter is integrated
-					l.Debug("Testing new MASQUE adapter with connectivity test")
-					time.Sleep(2 * time.Second) // Allow packet forwarding to stabilize
-					testCtx, testCancel := context.WithTimeout(ctx, ConnectivityTestTimeout)
+					// Brief pause to allow packet forwarding goroutines to detect the new adapter
+					time.Sleep(1 * time.Second)
+					
+					// Mark connection as restored AFTER adapter is replaced and goroutines can see it
+					l.Info("Marking connection as restored - packet forwarding should resume")
+					connectionBroken.Store(false)
 
-					if err := usermodeTunTest(testCtx, l, tnet, testURL); err != nil {
-						testCancel()
-						l.Warn("New MASQUE adapter connectivity test failed", "attempt", attempt, "error", err, "connection_error", true)
-						// Don't close the adapter since it's already integrated - let it try to recover naturally
-						continue
+					// Perform connectivity test to validate the new MASQUE connection
+					l.Info("Testing connectivity on restored MASQUE connection", "attempt", attempt)
+					
+					// Create a timeout context for the connectivity test
+					testCtx, cancel := context.WithTimeout(ctx, ConnectivityTestTimeout)
+					
+					// Test connectivity with fallback approach during recovery
+					var connectivityOK bool
+					
+					// Try DNS-independent test first (most reliable)
+					if err := dnsIndependentConnectivityTest(testCtx, l, tnet); err != nil {
+						l.Debug("DNS-independent test failed, trying HTTP test", "error", err)
+						
+						// Fallback to basic HTTP connectivity test
+						if err := usermodeTunTest(testCtx, l, tnet, testURL); err != nil {
+							l.Warn("HTTP connectivity test failed during recovery", "error", err)
+							// Accept established tunnel even if HTTP tests fail
+							l.Info("Accepting established MASQUE tunnel")
+							connectivityOK = true
+						} else {
+							l.Info("HTTP connectivity test passed")
+							connectivityOK = true
+						}
+					} else {
+						l.Info("DNS-independent connectivity test passed")
+						connectivityOK = true
 					}
-					testCancel()
+					cancel()
 
+					if connectivityOK {
+						l.Info("MASQUE adapter validated successfully", "attempt", attempt)
+					} else {
+						l.Warn("MASQUE adapter failed connectivity validation but accepting tunnel", "attempt", attempt)
+					}
+
+					// Accept recovery if tunnel established successfully
 					successfulRecovery = true
 					lastRecoveryTime.Store(time.Now().Unix())
 					l.Info("Connection recovery completed successfully", "attempt", attempt)

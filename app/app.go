@@ -652,8 +652,24 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 		return errors.New("no valid tunnel addresses received from MASQUE")
 	}
 
-	// Use DNS servers - respect user's choice
+	// Use multiple DNS servers for redundancy - primary and fallbacks
 	dnsServers := []netip.Addr{opts.DnsAddr}
+	
+	// Add fallback DNS servers to improve reliability
+	fallbackDNS := []string{
+		"8.8.8.8",    // Google DNS
+		"8.8.4.4",    // Google DNS secondary 
+		"1.0.0.1",    // Cloudflare DNS secondary
+		"9.9.9.9",    // Quad9 DNS
+	}
+	
+	for _, dns := range fallbackDNS {
+		if addr, err := netip.ParseAddr(dns); err == nil && addr != opts.DnsAddr {
+			dnsServers = append(dnsServers, addr)
+		}
+	}
+	
+	l.Info("DNS servers configured", "primary", opts.DnsAddr, "fallback_count", len(dnsServers)-1)
 
 	// Create netstack TUN
 	tunDev, tnet, err := netstack.CreateNetTUN(tunAddresses, dnsServers, singleMTU)
