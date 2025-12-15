@@ -389,7 +389,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 
 					// Replace the adapter safely first
 					adapter = newAdapter
-					
+
 					// Reset timestamps
 					now := time.Now().Unix()
 					lastSuccessfulRead.Store(now)
@@ -399,24 +399,24 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 
 					// Brief pause to allow packet forwarding goroutines to detect the new adapter
 					time.Sleep(1 * time.Second)
-					
+
 					// Mark connection as restored AFTER adapter is replaced and goroutines can see it
 					l.Info("Marking connection as restored - packet forwarding should resume")
 					connectionBroken.Store(false)
 
 					// Perform connectivity test to validate the new MASQUE connection
 					l.Info("Testing connectivity on restored MASQUE connection", "attempt", attempt)
-					
+
 					// Create a timeout context for the connectivity test
 					testCtx, cancel := context.WithTimeout(ctx, ConnectivityTestTimeout)
-					
+
 					// Test connectivity with fallback approach during recovery
 					var connectivityOK bool
-					
+
 					// Try DNS-independent test first (most reliable)
 					if err := dnsIndependentConnectivityTest(testCtx, l, tnet); err != nil {
 						l.Debug("DNS-independent test failed, trying HTTP test", "error", err)
-						
+
 						// Fallback to basic HTTP connectivity test
 						if err := usermodeTunTest(testCtx, l, tnet, testURL); err != nil {
 							l.Warn("HTTP connectivity test failed during recovery", "error", err)
