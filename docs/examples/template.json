@@ -1,0 +1,93 @@
+{
+  "version": "1.0",
+  "bind": "127.0.0.1:8086",
+  "endpoint": "162.159.192.1:2408", 
+  "key": "your-warp-license-key-here",
+  "dns": "1.1.1.1",
+  "test_url": "https://cp.cloudflare.com/",
+  "proxy": "socks5://127.0.0.1:1080",
+  "wireguard": {
+    "enabled": false,
+    "config": "/path/to/wireguard.conf",
+    "reserved": "1,2,3",
+    "fwmark": 0,
+    "atomicnoize": {
+      "I1": "<b 0c0d0e0f>",
+      "i2": "<b 0d0a0d0c>",
+      "I3": "<b 040506>",
+      "I4": "<b 0708>", 
+      "I5": "<b 09>",
+      "S1": 1,
+      "S2": 2,
+      "Jc": 85,
+      "Jmin": 40,
+      "Jmax": 90,
+      "JcAfterI1": 3,
+      "JcBeforeHS": 5,
+      "JcAfterHS": 4,
+      "JunkInterval": 150000000,
+      "AllowZeroSize": true,
+      "HandshakeDelay": 25000000
+    }
+  },
+  "masque": {
+    "enabled": true,
+    "preferred": false,
+    "config": {
+      "i1": "<b 0d0a0d0a>",
+      "i2": "<b 0d0a0d0a>",
+      "i3": "<b 0102>",
+      "i4": "<b 030405>",
+      "i5": "<b 060708>",
+      "fragment_size": 512,
+      "fragment_initial": true,
+      "FragmentDelay": 5000000,
+      "PaddingMin": 16,
+      "PaddingMax": 64,
+      "RandomPadding": true,
+      "Jc": 15,
+      "Jmin": 30,
+      "Jmax": 120,
+      "JcBeforeHS": 3,
+      "JcAfterI1": 2,
+      "JcDuringHS": 5,
+      "JcAfterHS": 3,
+      "JunkInterval": 20000000,
+      "JunkRandom": true,
+      "MimicProtocol": "https",
+      "CustomWrapper": true,
+      "HandshakeDelay": 30000000,
+      "PacketDelay": 5000000,
+      "RandomDelay": true,
+      "DelayMin": 2000000,
+      "DelayMax": 15000000,
+      "SNIFragmentation": true,
+      "SNIFragment": 32,
+      "FakeALPN": ["h2", "http/1.1"],
+      "ReversedOrder": false,
+      "DuplicatePackets": false,
+      "AllowZeroSize": true,
+      "UseTimestamp": false,
+      "UseNonce": true,
+      "RandomizeInitial": true,
+      "FakeLoss": 0.05
+    }
+  },
+  "psiphon": {
+    "enabled": false,
+    "country": "US"
+  },
+  "scanning": {
+    "enabled": false,
+    "max_rtt": "2s",
+    "workers": 16,
+    "ipv4_only": false,
+    "ipv6_only": false
+  },
+  "metadata": {
+    "name": "config-template",
+    "description": "template configuration with all available options for vwarp",
+    "author": "vwarp-team", 
+    "created_at": "2025-09-29T00:00:00Z"
+  }
+}

@@ -11,3 +11,8 @@ stuff/
 *.bak
 *.swp
 *.out
+
+# Test configuration files
+test-config.json
+*-config.json
+config-*.json

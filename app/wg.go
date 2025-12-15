@@ -26,11 +26,29 @@ func usermodeTunTest(ctx context.Context, l *slog.Logger, tnet *netstack.Net, ur
 
 	l.Info("testing connectivity", "url", url)
 
-	client := http.Client{
-		Timeout: 15 * time.Second,
-		Transport: &http.Transport{
-			DialContext: tnet.DialContext,
+	// Create HTTP client with appropriate timeouts
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Try tunnel DNS first
+			conn, err := tnet.DialContext(ctx, network, addr)
+			if err != nil {
+				// Log DNS issues but don't fail immediately
+				if strings.Contains(err.Error(), "lookup") && strings.Contains(err.Error(), "timeout") {
+					l.Debug("DNS lookup timeout via tunnel", "address", addr, "error", err)
+				}
+			}
+			return conn, err
 		},
+		MaxIdleConns:          10,
+		IdleConnTimeout:       30 * time.Second,
+		DisableKeepAlives:     false,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ResponseHeaderTimeout: 20 * time.Second,
+	}
+
+	client := http.Client{
+		Timeout:   10 * time.Second,
+		Transport: transport,
 	}
 
 	resp, err := client.Get(url)
@@ -42,6 +60,92 @@ func usermodeTunTest(ctx context.Context, l *slog.Logger, tnet *netstack.Net, ur
 
 	l.Info("connectivity test completed successfully", "status", resp.StatusCode, "url", url)
 	return nil
+}
+
+// dnsIndependentConnectivityTest performs a connectivity test without requiring DNS resolution
+func dnsIndependentConnectivityTest(ctx context.Context, l *slog.Logger, tnet *netstack.Net) error {
+	l.Info("performing DNS-independent connectivity test")
+
+	// Test basic network connectivity by trying to establish a TCP connection
+	// to a known Cloudflare IP address
+	testIPs := []string{
+		"1.1.1.1:443",        // Cloudflare DNS
+		"8.8.8.8:443",        // Google DNS
+		"104.16.132.229:443", // Cloudflare CDN
+		"172.67.74.226:443",  // Another Cloudflare IP
+		"104.21.2.20:443",    // Alternative Cloudflare IP
+	}
+
+	successCount := 0
+	for _, addr := range testIPs {
+		testCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		conn, err := tnet.DialContext(testCtx, "tcp", addr)
+		cancel()
+		if err != nil {
+			l.Debug("TCP connectivity test failed", "address", addr, "error", err)
+			continue
+		}
+
+		// Successfully connected
+		conn.Close()
+		successCount++
+		l.Debug("TCP connectivity test succeeded", "address", addr)
+
+		// If we get at least 2 successful connections, consider it working
+		if successCount >= 2 {
+			l.Info("DNS-independent connectivity test passed", "successful_connections", successCount)
+			return nil
+		}
+	}
+
+	if successCount > 0 {
+		l.Info("Partial connectivity detected", "successful_connections", successCount, "total_tested", len(testIPs))
+		return nil // Accept partial connectivity
+	}
+
+	return fmt.Errorf("all DNS-independent connectivity tests failed")
+}
+
+// enhancedConnectivityTest performs a more comprehensive connectivity test
+func enhancedConnectivityTest(ctx context.Context, l *slog.Logger, tnet *netstack.Net, url string) error {
+	l.Info("performing enhanced connectivity test", "url", url)
+
+	// First try the original test with reasonable timeout
+	testCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	if err := usermodeTunTest(testCtx, l, tnet, url); err == nil {
+		cancel()
+		return nil
+	}
+	cancel()
+
+	// If that fails, try direct IP connections to common services with more generous timeouts
+	directTests := []struct {
+		name string
+		url  string
+	}{
+		{"google", "http://142.250.191.14/"}, // Google IP
+		{"cloudflare", "http://104.16.132.229/"},
+		{"quad9", "http://149.112.112.112/"},
+	}
+
+	passedTests := 0
+	for _, test := range directTests {
+		testCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+		if err := usermodeTunTest(testCtx, l, tnet, test.url); err == nil {
+			cancel()
+			l.Info("Enhanced connectivity test passed", "test", test.name)
+			passedTests++
+			// If at least one test passes, consider it successful
+			if passedTests >= 1 {
+				return nil
+			}
+		} else {
+			l.Debug("Enhanced connectivity test failed", "test", test.name, "error", err)
+		}
+		cancel()
+	}
+
+	return fmt.Errorf("all enhanced connectivity tests failed")
 }
 
 func waitHandshake(ctx context.Context, l *slog.Logger, dev *device.Device) error {

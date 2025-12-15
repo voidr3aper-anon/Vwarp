@@ -175,44 +175,76 @@ func (n *Noize) DisableDebugPadding() {
 
 // ObfuscateWrite obfuscates outgoing QUIC packets
 func (n *Noize) ObfuscateWrite(packet []byte, addr *net.UDPAddr) ([]byte, error) {
+	// ALWAYS log this to see if it's being called
+	if n.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: ObfuscateWrite called - size:%d, addr:%s\n", len(packet), addr.String())
+	}
+
 	if len(packet) == 0 {
+		if n.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: Empty packet, returning as-is\n")
+		}
 		return packet, nil
 	}
 
 	// Detect QUIC packet type
 	packetType := detectQUICPacketType(packet)
 
+	// Temporary debug - check if this is being called at all
+	if n.debugPadding {
+		var packetTypeStr string
+		switch packetType {
+		case QUICInitial:
+			packetTypeStr = "Initial"
+		case QUICHandshake:
+			packetTypeStr = "Handshake"
+		case QUIC0RTT:
+			packetTypeStr = "0-RTT"
+		case QUIC1RTT:
+			packetTypeStr = "1-RTT"
+		case QUICRetry:
+			packetTypeStr = "Retry"
+		default:
+			packetTypeStr = "Unknown"
+		}
+		fmt.Printf("NOIZE_DEBUG: ObfuscateWrite called - packet type: %s, size: %d bytes, addr: %s\n", packetTypeStr, len(packet), addr.String())
+	}
+
 	addrKey := addr.String()
 
-	// Handle Initial packets specially
+	// Check if this is the first packet to this address (regardless of type)
+	// This ensures pre-handshake sequence runs even if packet type detection fails
+	n.mu.Lock()
+	state := n.hsState[addrKey]
+	isFirstPacket := (state == nil)
+	if state == nil {
+		state = &handshakeState{}
+		n.hsState[addrKey] = state
+		// This is the first packet to this address - trigger pre-handshake
+		state.initialSeen = true
+	}
+	n.mu.Unlock()
+
+	// Execute pre-handshake obfuscation sequence for first packet
+	if isFirstPacket {
+		if n.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: First packet detected, executing pre-handshake sequence\n")
+		}
+
+		// Execute pre-handshake obfuscation sequence asynchronously
+		// This allows the first packet to proceed while junk packets are sent
+		go n.executePreHandshake(addr)
+	}
+
+	// Handle Initial packets specially (in addition to first packet logic above)
 	if packetType == QUICInitial {
-		n.mu.Lock()
-		state := n.hsState[addrKey]
-		if state == nil {
-			state = &handshakeState{}
-			n.hsState[addrKey] = state
-		}
-
-		if !state.initialSeen {
-			state.initialSeen = true
-			n.mu.Unlock()
-
-			// Execute pre-handshake obfuscation sequence
-			go n.executePreHandshake(addr)
-
-			// Apply delay before actual handshake
-			if n.config.HandshakeDelay > 0 {
-				time.Sleep(n.config.HandshakeDelay)
-			}
-		} else {
-			n.mu.Unlock()
-		}
-
 		if n.config.FragmentInitial && n.config.FragmentSize > 0 && len(packet) > n.config.FragmentSize {
 			return n.fragmentInitialPacket(packet, addr), nil
 		}
 	}
 
+	// Skip post-handshake junk packets for 1-RTT packets
+	// (These are sent after tunnel is established and should be clean)
 	if packetType == QUIC1RTT {
 		n.mu.Lock()
 		state := n.hsState[addrKey]
@@ -242,26 +274,26 @@ func (n *Noize) ObfuscateWrite(packet []byte, addr *net.UDPAddr) ([]byte, error)
 // executePreHandshake sends signature and junk packets before handshake
 func (n *Noize) executePreHandshake(addr *net.UDPAddr) {
 	if n.conn == nil {
+		if n.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: executePreHandshake called but n.conn is nil\n")
+		}
 		return
 	}
 
 	if n.debugPadding {
 		fmt.Printf("NOIZE_DEBUG: executePreHandshake started for %s\n", addr.String())
-		fmt.Printf("NOIZE_DEBUG: JcBeforeHS=%d, JcAfterI1=%d, JcDuringHS=%d\n",
-			n.config.JcBeforeHS, n.config.JcAfterI1, n.config.JcDuringHS)
+	}
+
+	if n.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: executePreHandshake called for %s, JcBeforeHS=%d, I1='%s'\n",
+			addr.String(), n.config.JcBeforeHS, n.config.I1)
 	}
 
 	if n.config.JcBeforeHS > 0 {
-		if n.debugPadding {
-			fmt.Printf("NOIZE_DEBUG: Sending %d junk packets before handshake\n", n.config.JcBeforeHS)
-		}
 		for i := 0; i < n.config.JcBeforeHS; i++ {
 			junk := n.generateJunkPacket()
 			if len(junk) > 0 {
 				n.conn.WriteToUDP(junk, addr)
-				if n.debugPadding {
-					fmt.Printf("NOIZE_DEBUG: Sent %d byte junk packet before HS\n", len(junk))
-				}
 			}
 			n.applyJunkDelay()
 		}
@@ -272,24 +304,15 @@ func (n *Noize) executePreHandshake(addr *net.UDPAddr) {
 		i1Packet, err := parseCPSPacket(n.config.I1)
 		if err == nil && len(i1Packet) > 0 {
 			n.conn.WriteToUDP(i1Packet, addr)
-			if n.debugPadding {
-				fmt.Printf("NOIZE_DEBUG: Sent I1 signature packet (%d bytes)\n", len(i1Packet))
-			}
 			time.Sleep(2 * time.Millisecond)
 		}
 	}
 
 	if n.config.JcAfterI1 > 0 {
-		if n.debugPadding {
-			fmt.Printf("NOIZE_DEBUG: Sending %d junk packets after I1\n", n.config.JcAfterI1)
-		}
 		for i := 0; i < n.config.JcAfterI1; i++ {
 			junk := n.generateJunkPacket()
 			if len(junk) > 0 {
 				n.conn.WriteToUDP(junk, addr)
-				if n.debugPadding {
-					fmt.Printf("NOIZE_DEBUG: Sent %d byte junk packet after I1\n", len(junk))
-				}
 			}
 			n.applyJunkDelay()
 		}
@@ -304,32 +327,20 @@ func (n *Noize) executePreHandshake(addr *net.UDPAddr) {
 		packet, err := parseCPSPacket(sig)
 		if err == nil && len(packet) > 0 {
 			n.conn.WriteToUDP(packet, addr)
-			if n.debugPadding {
-				fmt.Printf("NOIZE_DEBUG: Sent signature packet (%d bytes)\n", len(packet))
-			}
 			time.Sleep(1 * time.Millisecond)
 		}
 	}
 
 	if n.config.JcDuringHS > 0 {
-		if n.debugPadding {
-			fmt.Printf("NOIZE_DEBUG: Sending %d junk packets during handshake\n", n.config.JcDuringHS)
-		}
 		for i := 0; i < n.config.JcDuringHS; i++ {
 			junk := n.generateJunkPacket()
 			if len(junk) > 0 {
 				n.conn.WriteToUDP(junk, addr)
-				if n.debugPadding {
-					fmt.Printf("NOIZE_DEBUG: Sent %d byte junk packet during HS\n", len(junk))
-				}
 			}
 			n.applyJunkDelay()
 		}
 	}
 
-	if n.debugPadding {
-		fmt.Printf("NOIZE_DEBUG: executePreHandshake completed for %s\n", addr.String())
-	}
 }
 
 func (n *Noize) executePostHandshake(addr *net.UDPAddr) {
@@ -337,6 +348,8 @@ func (n *Noize) executePostHandshake(addr *net.UDPAddr) {
 		return
 	}
 
+	// Check if obfuscation is still enabled via the wrapper
+	// If disabled, don't send post-handshake junk packets
 	if n.config.JcAfterHS > 0 {
 		for i := 0; i < n.config.JcAfterHS; i++ {
 			junk := n.generateJunkPacket()
@@ -442,12 +455,6 @@ func (n *Noize) addPadding(packet []byte) []byte {
 	padding := make([]byte, paddingSize)
 	rand.Read(padding)
 
-	// Debug: Print padding info (enable via EnableDebugPadding())
-	if n.debugPadding {
-		fmt.Printf("NOIZE_DEBUG: Added %d bytes padding to %d byte packet (total: %d)\n",
-			paddingSize, originalLen, originalLen+paddingSize)
-	}
-
 	return append(packet, padding...)
 }
 
@@ -456,23 +463,14 @@ func (n *Noize) generateJunkPacket() []byte {
 	minSize := n.config.Jmin
 	maxSize := n.config.Jmax
 
-	// Debug output
-	if n.debugPadding {
-		fmt.Printf("NOIZE_DEBUG: Generating junk packet - min:%d, max:%d, allowZero:%t\n",
-			minSize, maxSize, n.config.AllowZeroSize)
-	}
-
 	if minSize == 0 && maxSize == 0 {
 		if n.config.AllowZeroSize {
-			if n.debugPadding {
-				fmt.Printf("NOIZE_DEBUG: Returning zero-size junk packet\n")
-			}
 			return []byte{}
 		}
-		if n.debugPadding {
-			fmt.Printf("NOIZE_DEBUG: Returning 1-byte fallback junk packet\n")
-		}
-		return []byte{0x00}
+		// Fix invalid config: use reasonable defaults when min/max are 0 but zero-size not allowed
+
+		minSize = 40
+		maxSize = 90
 	}
 
 	if !n.config.AllowZeroSize && minSize < 1 {
@@ -489,18 +487,12 @@ func (n *Noize) generateJunkPacket() []byte {
 	}
 
 	if size == 0 && n.config.AllowZeroSize {
-		if n.debugPadding {
-			fmt.Printf("NOIZE_DEBUG: Returning zero-size junk packet (calculated)\n")
-		}
+
 		return []byte{}
 	}
 
 	junk := make([]byte, size)
 	rand.Read(junk)
-
-	if n.debugPadding {
-		fmt.Printf("NOIZE_DEBUG: Generated %d byte junk packet\n", size)
-	}
 
 	// Optionally make it look like a protocol packet
 	if n.config.MimicProtocol != "" && size > 10 {

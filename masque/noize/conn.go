@@ -31,36 +31,26 @@ func WrapUDPConn(conn *net.UDPConn, config *NoizeConfig) *NoizeUDPConn {
 
 // WriteToUDP writes obfuscated data to UDP
 func (c *NoizeUDPConn) WriteToUDP(b []byte, addr *net.UDPAddr) (int, error) {
+	if c.noize != nil && c.noize.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: WriteToUDP called - size:%d, enabled:%t, addr:%s\n", len(b), c.enabled, addr.String())
+	}
+
 	if !c.enabled || c.noize == nil {
 		return c.UDPConn.WriteToUDP(b, addr)
 	}
 
+	// Check if all obfuscation is disabled
 	config := c.noize.config
 	if config.Jc == 0 && config.JcBeforeHS == 0 && config.JcAfterI1 == 0 &&
 		config.JcDuringHS == 0 && config.JcAfterHS == 0 && config.PaddingMax == 0 &&
 		!config.FragmentInitial && config.I1 == "" && config.I2 == "" {
-		if c.noize.debugPadding {
-			fmt.Printf("NOIZE_DEBUG: All obfuscation disabled, bypassing - packet size: %d\n", len(b))
-		}
 		return c.UDPConn.WriteToUDP(b, addr)
-	}
-
-	if c.noize.debugPadding {
-		fmt.Printf("NOIZE_DEBUG: WriteToUDP called - packet size: %d, addr: %s\n", len(b), addr.String())
 	}
 
 	// Obfuscate the packet
 	obfuscated, err := c.noize.ObfuscateWrite(b, addr)
 	if err != nil {
-		if c.noize.debugPadding {
-			fmt.Printf("NOIZE_DEBUG: ObfuscateWrite error: %v\n", err)
-		}
 		return 0, err
-	}
-
-	// Debug: Log result
-	if c.noize.debugPadding {
-		fmt.Printf("NOIZE_DEBUG: Packet obfuscated - original: %d bytes, final: %d bytes\n", len(b), len(obfuscated))
 	}
 
 	// Write obfuscated packet
@@ -69,9 +59,20 @@ func (c *NoizeUDPConn) WriteToUDP(b []byte, addr *net.UDPAddr) (int, error) {
 
 // WriteTo implements the WriterTo interface (used by QUIC)
 func (c *NoizeUDPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
+	if c.noize != nil && c.noize.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: WriteTo called - size:%d, addr:%s, addr_type:%T\n", len(b), addr.String(), addr)
+	}
+
 	udpAddr, ok := addr.(*net.UDPAddr)
 	if !ok {
+		if c.noize != nil && c.noize.debugPadding {
+			fmt.Printf("NOIZE_DEBUG: WriteTo - not UDP addr, falling back to direct write\n")
+		}
 		return c.UDPConn.WriteTo(b, addr)
+	}
+
+	if c.noize != nil && c.noize.debugPadding {
+		fmt.Printf("NOIZE_DEBUG: WriteTo - delegating to WriteToUDP\n")
 	}
 	return c.WriteToUDP(b, udpAddr)
 }
@@ -170,6 +171,14 @@ func (c *NoizeUDPConn) DisableDebugPadding() {
 	if c.noize != nil {
 		c.noize.DisableDebugPadding()
 	}
+}
+
+// DisableObfuscation disables all noize obfuscation
+// This should be called after tunnel establishment to prevent junk packets from flowing through the tunnel
+func (c *NoizeUDPConn) DisableObfuscation() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.enabled = false
 }
 
 // PresetConfigs provides preset obfuscation configurations
@@ -340,7 +349,6 @@ func GFWBypassConfig() *NoizeConfig {
 	}
 }
 
-// NoObfuscationConfig - disable all obfuscation
 func NoObfuscationConfig() *NoizeConfig {
 	return &NoizeConfig{
 		Jc:              0,
@@ -354,20 +362,31 @@ func NoObfuscationConfig() *NoizeConfig {
 // MinimalObfuscationConfig - very light obfuscation, least likely to break handshake
 func MinimalObfuscationConfig() *NoizeConfig {
 	return &NoizeConfig{
-		// Minimal obfuscation - just a few junk packets after handshake
-		PaddingMin:      0,
-		PaddingMax:      0,
-		RandomPadding:   false,
-		Jc:              12, // Very few junk packets
-		JcBeforeHS:      4,  // No junk before handshake
-		JcAfterI1:       4,  // No junk after I1
-		JcDuringHS:      4,  // No junk during handshake
-		JcAfterHS:       3,  // Only after handshake
-		Jmin:            0,
-		Jmax:            0,
-		FragmentInitial: false, // Don't fragment
-		HandshakeDelay:  0,     // No delay
-		JunkInterval:    5 * time.Millisecond,
-		AllowZeroSize:   true,
+		I1:               "<b 474554202f20485454502f312e31><r 8>", // HTTP GET signature
+		FragmentSize:     1280,
+		FragmentInitial:  true,
+		FragmentDelay:    3 * time.Millisecond, // Don't fragment to avoid complexity
+		PaddingMin:       1,                    // Small padding to change packet size
+		PaddingMax:       0,                    // Variable padding
+		RandomPadding:    false,
+		Jc:               8,                    // Total junk packets
+		JcBeforeHS:       3,                    // Junk before handshake
+		JcAfterI1:        2,                    // Junk after signature
+		JcDuringHS:       3,                    // Junk during handshake
+		JcAfterHS:        4,                    // Junk after handshake
+		Jmin:             40,                   // Minimum junk size (realistic)
+		Jmax:             1285,                 // Maximum junk size
+		JunkInterval:     5 * time.Millisecond, // Small delay between junk
+		JunkRandom:       true,
+		HandshakeDelay:   5 * time.Millisecond, // Small delay before handshake
+		MimicProtocol:    "",                   // Mimic HTTPS traffic
+		RandomDelay:      true,
+		DelayMin:         5 * time.Millisecond,
+		DelayMax:         15 * time.Millisecond,
+		SNIFragmentation: true, // Keep simple for now
+		UseTimestamp:     true,
+		UseNonce:         true, // Add some randomness
+		RandomizeInitial: true, // Randomize initial packet
+		AllowZeroSize:    true, // Don't allow zero size
 	}
 }

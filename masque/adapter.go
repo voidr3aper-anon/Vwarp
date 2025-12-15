@@ -133,8 +133,8 @@ func NewMasqueAdapter(ctx context.Context, cfg AdapterConfig) (*MasqueAdapter, e
 		}
 
 		// Validate registration data
-		if len(updatedAccountData.Config.Peers) == 0 || updatedAccountData.Config.Peers[0].Endpoint.V4 == "" || 
-		   updatedAccountData.Config.Peers[0].PublicKey == "" || updatedAccountData.ID == "" {
+		if len(updatedAccountData.Config.Peers) == 0 || updatedAccountData.Config.Peers[0].Endpoint.V4 == "" ||
+			updatedAccountData.Config.Peers[0].PublicKey == "" || updatedAccountData.ID == "" {
 			return nil, fmt.Errorf("registration failed: incomplete data returned")
 		}
 
@@ -162,8 +162,8 @@ func NewMasqueAdapter(ctx context.Context, cfg AdapterConfig) (*MasqueAdapter, e
 		}
 
 		// Verify config was saved correctly
-		if err := config.LoadConfig(cfg.ConfigPath); err != nil || 
-		   config.AppConfig.PrivateKey == "" || config.AppConfig.ID == "" {
+		if err := config.LoadConfig(cfg.ConfigPath); err != nil ||
+			config.AppConfig.PrivateKey == "" || config.AppConfig.ID == "" {
 			return nil, fmt.Errorf("failed to verify saved config")
 		}
 
@@ -270,13 +270,13 @@ func NewMasqueAdapter(ctx context.Context, cfg AdapterConfig) (*MasqueAdapter, e
 	testConn.Close()
 	cfg.Logger.Debug("UDP connectivity test successful")
 
-	// Create QUIC config with shorter timeout for faster failure detection
+	// Create QUIC config - slightly longer handshake timeout to reduce retransmissions
 	quicConfig := &quic.Config{
 		EnableDatagrams:       true,
 		InitialPacketSize:     1242, // CRITICAL: Required for MASQUE - matches Cloudflare WARP implementation
 		KeepAlivePeriod:       30 * time.Second,
 		MaxIdleTimeout:        60 * time.Second,
-		HandshakeIdleTimeout:  10 * time.Second, // Add handshake timeout
+		HandshakeIdleTimeout:  20 * time.Second, // Slightly longer to reduce aggressive retransmissions
 		MaxIncomingStreams:    10,
 		MaxIncomingUniStreams: 5,
 	}
@@ -302,9 +302,9 @@ func NewMasqueAdapter(ctx context.Context, cfg AdapterConfig) (*MasqueAdapter, e
 
 	if cfg.NoizeConfig != nil {
 		cfg.Logger.Info("Using noize obfuscation for MASQUE connection")
-		conn, transport, ipConn, rsp, err = ConnectTunnelWithNoize(connCtx, tlsConfig, quicConfig, ConnectURI, udpAddr, cfg.NoizeConfig)
+		conn, transport, ipConn, rsp, err = ConnectTunnelWithNoize(connCtx, tlsConfig, quicConfig, ConnectURI, udpAddr, cfg.NoizeConfig, cfg.Logger)
 	} else {
-		conn, transport, ipConn, rsp, err = api.ConnectTunnel(connCtx, tlsConfig, quicConfig, ConnectURI, udpAddr)
+		conn, transport, ipConn, rsp, err = ConnectTunnelOptimized(connCtx, tlsConfig, quicConfig, ConnectURI, udpAddr, cfg.Logger)
 	}
 
 	if err != nil {

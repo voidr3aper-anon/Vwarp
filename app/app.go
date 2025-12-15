@@ -10,10 +10,12 @@ import (
 	"net/netip"
 	"path"
 	"sync"
+	"time"
 
+	"github.com/bepass-org/vwarp/config/noize"
 	"github.com/bepass-org/vwarp/iputils"
 	"github.com/bepass-org/vwarp/masque"
-	"github.com/bepass-org/vwarp/masque/noize"
+	masquenoize "github.com/bepass-org/vwarp/masque/noize"
 	"github.com/bepass-org/vwarp/psiphon"
 	"github.com/bepass-org/vwarp/warp"
 	"github.com/bepass-org/vwarp/wireguard/preflightbind"
@@ -33,8 +35,7 @@ type WarpOptions struct {
 	Psiphon            *PsiphonOptions
 	Gool               bool
 	Masque             bool
-	MasqueAutoFallback bool   // Automatically fallback to WireGuard if MASQUE fails
-	MasquePreferred    bool   // Prefer MASQUE over WireGuard when both are available
+	MasquePreferred    bool   // Prefer MASQUE over WireGuard with automatic fallback
 	MasqueNoize        bool   // Enable MASQUE noize obfuscation
 	MasqueNoizePreset  string // Noize preset: light, medium, heavy, stealth, gfw
 	MasqueNoizeConfig  string // Path to custom noize configuration JSON file
@@ -45,6 +46,7 @@ type WarpOptions struct {
 	Reserved           string
 	TestURL            string
 	AtomicNoizeConfig  *preflightbind.AtomicNoizeConfig
+	UnifiedNoizeConfig *noize.UnifiedNoizeConfig // Unified configuration for both WireGuard and MASQUE obfuscation
 	ProxyAddress       string
 }
 
@@ -114,15 +116,6 @@ func RunWarp(ctx context.Context, l *slog.Logger, opts WarpOptions) error {
 		l.Info("running in MASQUE mode")
 		// run warp through MASQUE proxy
 		warpErr = runWarpWithMasque(ctx, l, opts, endpoints[0])
-
-		// Auto-fallback to WireGuard if MASQUE fails and fallback is enabled
-		if warpErr != nil && opts.MasqueAutoFallback {
-			l.Warn("MASQUE connection failed, attempting WireGuard fallback", "error", warpErr)
-			warpErr = runWarp(ctx, l, opts, endpoints[0])
-			if warpErr == nil {
-				l.Info("WireGuard fallback successful")
-			}
-		}
 	case opts.MasquePreferred:
 		// Try MASQUE first, fallback to WireGuard automatically
 		l.Info("running in MASQUE-preferred mode")
@@ -166,9 +159,10 @@ func runWireguard(ctx context.Context, l *slog.Logger, opts WarpOptions) error {
 	conf.Interface.DNS = []netip.Addr{opts.DnsAddr}
 
 	// Enable trick and keepalive on all peers in config
+	atomicNoizeConfig := getAtomicNoizeConfig(opts)
 	for i, peer := range conf.Peers {
 		// Only enable old trick functionality if AtomicNoize is not being used
-		if opts.AtomicNoizeConfig == nil {
+		if atomicNoizeConfig == nil {
 			peer.Trick = true
 		}
 		peer.KeepAlive = 5
@@ -193,7 +187,7 @@ func runWireguard(ctx context.Context, l *slog.Logger, opts WarpOptions) error {
 			continue
 		}
 
-		werr = establishWireguard(l, conf, tunDev, opts.FwMark, t, opts.AtomicNoizeConfig, opts.ProxyAddress)
+		werr = establishWireguard(l, conf, tunDev, opts.FwMark, t, atomicNoizeConfig, opts.ProxyAddress)
 		if werr != nil {
 			continue
 		}
@@ -229,6 +223,7 @@ func runWarp(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoint str
 	}
 
 	conf := generateWireguardConfig(ident)
+	atomicNoizeConfig := getAtomicNoizeConfig(opts)
 
 	// Set up MTU
 	conf.Interface.MTU = singleMTU
@@ -265,7 +260,7 @@ func runWarp(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoint str
 			continue
 		}
 
-		werr = establishWireguard(l, &conf, tunDev, opts.FwMark, t, opts.AtomicNoizeConfig, opts.ProxyAddress)
+		werr = establishWireguard(l, &conf, tunDev, opts.FwMark, t, atomicNoizeConfig, opts.ProxyAddress)
 		if werr != nil {
 			continue
 		}
@@ -292,6 +287,7 @@ func runWarp(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoint str
 }
 
 func runWarpInWarp(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoints []string) error {
+	atomicNoizeConfig := getAtomicNoizeConfig(opts)
 	// make primary identity
 	ident1, err := warp.LoadOrCreateIdentity(l, path.Join(opts.CacheDir, "primary"), opts.License)
 	if err != nil {
@@ -337,7 +333,7 @@ func runWarpInWarp(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoi
 			continue
 		}
 
-		werr = establishWireguard(l.With("gool", "outer"), &conf, tunDev, opts.FwMark, t, opts.AtomicNoizeConfig, opts.ProxyAddress)
+		werr = establishWireguard(l.With("gool", "outer"), &conf, tunDev, opts.FwMark, t, atomicNoizeConfig, opts.ProxyAddress)
 		if werr != nil {
 			continue
 		}
@@ -423,6 +419,7 @@ func runWarpWithPsiphon(ctx context.Context, l *slog.Logger, opts WarpOptions, e
 	}
 
 	conf := generateWireguardConfig(ident)
+	atomicNoizeConfig := getAtomicNoizeConfig(opts)
 
 	// Set up MTU
 	conf.Interface.MTU = singleMTU
@@ -460,7 +457,7 @@ func runWarpWithPsiphon(ctx context.Context, l *slog.Logger, opts WarpOptions, e
 			continue
 		}
 
-		werr = establishWireguard(l, &conf, tunDev, opts.FwMark, t, opts.AtomicNoizeConfig, opts.ProxyAddress)
+		werr = establishWireguard(l, &conf, tunDev, opts.FwMark, t, atomicNoizeConfig, opts.ProxyAddress)
 		if werr != nil {
 			continue
 		}
@@ -492,6 +489,41 @@ func runWarpWithPsiphon(ctx context.Context, l *slog.Logger, opts WarpOptions, e
 	return nil
 }
 
+// getAtomicNoizeConfig extracts AtomicNoize configuration from options
+func getAtomicNoizeConfig(opts WarpOptions) *preflightbind.AtomicNoizeConfig {
+	// Check unified config first
+	if opts.UnifiedNoizeConfig != nil && opts.UnifiedNoizeConfig.IsWireGuardEnabled() {
+		return opts.UnifiedNoizeConfig.WireGuard.AtomicNoize
+	}
+	// Fallback to legacy config
+	return opts.AtomicNoizeConfig
+}
+
+// getMASQUEPresetConfig returns the MASQUE noize configuration for a given preset
+func getMASQUEPresetConfig(preset string, l *slog.Logger) *masquenoize.NoizeConfig {
+	switch preset {
+	case "minimal":
+		return masquenoize.MinimalObfuscationConfig()
+	case "light":
+		return masquenoize.LightObfuscationConfig()
+	case "medium":
+		return masquenoize.MediumObfuscationConfig()
+	case "heavy":
+		return masquenoize.HeavyObfuscationConfig()
+	case "stealth":
+		return masquenoize.StealthObfuscationConfig()
+	case "gfw":
+		return masquenoize.GFWBypassConfig()
+	case "firewall":
+		return masquenoize.FirewallBypassConfig()
+	case "none":
+		return nil
+	default:
+		l.Warn("Unknown MASQUE noize preset, using medium", "preset", preset)
+		return masquenoize.MediumObfuscationConfig()
+	}
+}
+
 func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, endpoint string) error {
 	l.Info("running in MASQUE mode")
 
@@ -516,13 +548,31 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 	masqueConfigPath := path.Join(opts.CacheDir, "masque_config.json")
 	l.Debug("Creating MASQUE adapter", "masqueEndpoint", masqueEndpoint, "configPath", masqueConfigPath)
 
-	// Configure noize obfuscation if enabled
-	var noizeConfig *noize.NoizeConfig
-	if opts.MasqueNoize {
+	// Configure noize obfuscation using unified configuration system
+	var noizeConfig *masquenoize.NoizeConfig
+
+	// Check for unified configuration first
+	if opts.UnifiedNoizeConfig != nil && opts.UnifiedNoizeConfig.IsMASQUEEnabled() {
+		l.Info("Using unified MASQUE noize configuration")
+		masqueConfig := opts.UnifiedNoizeConfig.MASQUE
+
+		if masqueConfig.Config != nil {
+			// Use custom configuration
+			noizeConfig = masqueConfig.Config
+			l.Info("Using custom unified MASQUE noize configuration")
+		} else if masqueConfig.Preset != "" {
+			// Use preset from unified config
+			l.Info("Using unified MASQUE noize preset", "preset", masqueConfig.Preset)
+			noizeConfig = getMASQUEPresetConfig(masqueConfig.Preset, l)
+		}
+	} else if opts.MasqueNoize {
+		// Fallback to legacy configuration for backward compatibility
+		l.Info("Using legacy MASQUE noize configuration")
+
 		// Check for custom config file first
 		if opts.MasqueNoizeConfig != "" {
 			l.Info("Loading custom MASQUE noize configuration", "configPath", opts.MasqueNoizeConfig)
-			customConfig, err := noize.LoadConfigFromFile(opts.MasqueNoizeConfig)
+			customConfig, err := masquenoize.LoadConfigFromFile(opts.MasqueNoizeConfig)
 			if err != nil {
 				l.Warn("Failed to load custom noize config, falling back to preset", "error", err, "preset", opts.MasqueNoizePreset)
 			} else {
@@ -537,44 +587,45 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 			if preset == "" {
 				preset = "medium"
 			}
-
-			l.Info("Using MASQUE noize preset configuration", "preset", preset)
-
-			switch preset {
-			case "minimal":
-				noizeConfig = noize.MinimalObfuscationConfig()
-			case "light":
-				noizeConfig = noize.LightObfuscationConfig()
-			case "medium":
-				noizeConfig = noize.MediumObfuscationConfig()
-			case "heavy":
-				noizeConfig = noize.HeavyObfuscationConfig()
-			case "stealth":
-				noizeConfig = noize.StealthObfuscationConfig()
-			case "gfw":
-				noizeConfig = noize.GFWBypassConfig()
-			case "firewall":
-				noizeConfig = noize.FirewallBypassConfig()
-			case "none":
-				noizeConfig = nil
-				l.Info("Noize disabled (preset=none)")
-			default:
-				l.Warn("Unknown noize preset, using medium", "preset", preset)
-				noizeConfig = noize.MediumObfuscationConfig()
-			}
+			l.Info("Using legacy MASQUE noize preset", "preset", preset)
+			noizeConfig = getMASQUEPresetConfig(preset, l)
 		}
 	}
 
-	adapter, err := masque.NewMasqueAdapter(ctx, masque.AdapterConfig{
-		ConfigPath:  masqueConfigPath,
-		DeviceName:  "vwarp-masque",
-		Endpoint:    masqueEndpoint,
-		Logger:      l,
-		License:     opts.License,
-		NoizeConfig: noizeConfig,
-	})
+	// Create MASQUE adapter with retry for Android connectivity issues
+	var adapter *masque.MasqueAdapter
+	var err error
+
+	// Try creating adapter with retries for Android initialization issues
+	for attempt := 1; attempt <= 3; attempt++ {
+		l.Debug("Creating MASQUE adapter", "attempt", attempt)
+
+		adapter, err = masque.NewMasqueAdapter(ctx, masque.AdapterConfig{
+			ConfigPath:  masqueConfigPath,
+			DeviceName:  "vwarp-masque",
+			Endpoint:    masqueEndpoint,
+			Logger:      l,
+			License:     opts.License,
+			NoizeConfig: noizeConfig,
+		})
+
+		if err == nil {
+			l.Info("MASQUE adapter created successfully", "attempt", attempt)
+			break
+		}
+
+		l.Warn("Failed to create MASQUE adapter", "attempt", attempt, "error", err)
+
+		// On Android, sometimes network interfaces need time to stabilize
+		if attempt < 3 {
+			retryDelay := time.Duration(attempt) * 2 * time.Second
+			l.Info("Retrying MASQUE adapter creation", "delay", retryDelay)
+			time.Sleep(retryDelay)
+		}
+	}
+
 	if err != nil {
-		return fmt.Errorf("failed to establish MASQUE connection: %w", err)
+		return fmt.Errorf("failed to establish MASQUE connection after retries: %w", err)
 	}
 	defer adapter.Close()
 
@@ -601,8 +652,24 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 		return errors.New("no valid tunnel addresses received from MASQUE")
 	}
 
-	// Use DNS servers - respect user's choice
+	// Use multiple DNS servers for redundancy - primary and fallbacks
 	dnsServers := []netip.Addr{opts.DnsAddr}
+
+	// Add fallback DNS servers to improve reliability
+	fallbackDNS := []string{
+		"8.8.8.8", // Google DNS
+		"8.8.4.4", // Google DNS secondary
+		"1.0.0.1", // Cloudflare DNS secondary
+		"9.9.9.9", // Quad9 DNS
+	}
+
+	for _, dns := range fallbackDNS {
+		if addr, err := netip.ParseAddr(dns); err == nil && addr != opts.DnsAddr {
+			dnsServers = append(dnsServers, addr)
+		}
+	}
+
+	l.Info("DNS servers configured", "primary", opts.DnsAddr, "fallback_count", len(dnsServers)-1)
 
 	// Create netstack TUN
 	tunDev, tnet, err := netstack.CreateNetTUN(tunAddresses, dnsServers, singleMTU)
@@ -633,7 +700,7 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 	}
 
 	// Start tunnel maintenance goroutine
-	go maintainMasqueTunnel(ctx, l, adapter, adapterFactory, tunAdapter, singleMTU)
+	go maintainMasqueTunnel(ctx, l, adapter, adapterFactory, tunAdapter, singleMTU, tnet, opts.TestURL)
 
 	// Test connectivity
 	if err := usermodeTunTest(ctx, l, tnet, opts.TestURL); err != nil {
