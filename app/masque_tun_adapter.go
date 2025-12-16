@@ -204,7 +204,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 					writeErrors++
 					connectionFailures.Add(1) // Track local failure
 					TrackConnectionFailure()  // Track global failure
-					
+
 					// Be more tolerant - require multiple consecutive errors before marking as broken
 					if writeErrors >= 3 && !connectionBroken.Load() {
 						l.Warn("MASQUE connection error detected on write", "error", err, "consecutive_errors", writeErrors)
@@ -348,7 +348,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 				readStale := now-lastRead > int64(StaleConnectionThreshold.Seconds())
 				writeStale := now-lastWrite > int64(StaleConnectionThreshold.Seconds())
 				failures := connectionFailures.Load()
-				
+
 				// Trigger if either read/write is stale OR we have connection failures
 				connectionIssues := (readStale || writeStale) || failures >= 3
 
@@ -386,11 +386,11 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 				// If we have many failures in a short period, likely firewall interference
 				timeSinceReset := now - lastReset
 				globalTimeSinceReset := now - globalLastReset
-				
+
 				// Check both local and global failure rates
-				localHighFailures := failures >= 5 && timeSinceReset < 120 // 5+ failures in 2 minutes
+				localHighFailures := failures >= 5 && timeSinceReset < 120              // 5+ failures in 2 minutes
 				globalHighFailures := globalFailures >= 8 && globalTimeSinceReset < 180 // 8+ global failures in 3 minutes
-				
+
 				if localHighFailures || globalHighFailures {
 					if !connectionBroken.Load() {
 						l.Warn("High connection failure rate detected, likely firewall interference",
@@ -533,7 +533,7 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 					lastFailureReset.Store(time.Now().Unix())
 					globalConnectionFailures.Store(0)
 					globalLastFailureReset.Store(time.Now().Unix())
-					
+
 					l.Info("MASQUE connection recovery successful")
 
 					// Drain any queued connectionDown signals that occurred during recovery
