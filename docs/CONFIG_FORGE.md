@@ -1,10 +1,11 @@
 # vwarp Configuration Guide & Examples
 
-This comprehensive guide covers the complete configuration system for vwarp, including all connection options, obfuscation settings, and ready-to-use example configurations.
+This comprehensive guide covers the complete configuration system for vwarp, including all connection options, obfuscation settings, and ready-to-use example configurations. as the noize configuration with options  was tricy and frustraing and also we were adding warp and masque to this repo, we decided to make a unified configuration file for  almost any variable the the vwarp can use . we ade this config a complete unti cencorship and adaptable in all situations. follow the instructions below to get the  best out of it. 
 
 ## 📄 Quick Start
 
 ### 🌟 Recommended for Everyone (All Countries)
+the best approach that we encourge you to do is to use ocnfig files and also share for youre friends to elp them conenct easier.
 ```bash
 # Use the universal working configuration (recommended first choice)
 vwarp --config docs/examples/sample-working.json --masque
@@ -16,6 +17,8 @@ vwarp --config my-config.json --masque
 ```
 
 ### Alternative Quick Options
+
+another option is to use the harkcoded presets in code. they are working for now specially the light one . 
 ```bash
 # CLI presets (no config file needed)
 vwarp --masque --noize-preset moderate
@@ -36,6 +39,8 @@ vwarp --config my-config.json --masque
   - Works in China, Iran, Russia, and other restrictive countries
   - Corporate network friendly
 - **Recommended for**: 🌍 **ALL COUNTRIES - Start here first!**
+
+the other options is availbe but we  are sure they may not work on some protocols and some netwroks . the best is take sample and  change it based on youre network 
 
 ### `basic-obfuscation.json`
 - **Use case**: Light filtering and basic DPI detection systems
@@ -169,6 +174,9 @@ Use any of the above configurations as templates for creating custom configurati
 **Europe**: GB, DE, FR, IT, ES, NL, SE, NO, DK, FI, CH, AT, BE, IE, PT, PL, CZ, HU, RO, BG, HR, EE, LV, SK, RS  
 **Asia-Pacific**: JP, SG, AU, IN  
 
+you can finid what countriy each one is by following the appropiate readme :
+[country codes](https://countrycode.org/)
+
 ## 🚀 Usage Examples
 
 ### 🌟 Recommended First Try (All Countries)
@@ -195,37 +203,11 @@ vwarp --masque --noize-preset moderate
 vwarp --config docs/examples/sample-working.json --proxy socks5://127.0.0.1:1080
 ```
 
-## ⚙️ Configuration Comparison
 
-| Feature | Sample-Working ⭐ | Basic | Moderate | Heavy |
-|---------|------------------|-------|----------|--------|
-| **MASQUE Junk Packets** | 15 | 5-10 | 15-25 | 30-50 |
-| **WireGuard Junk Packets** | 25 | 10-20 | 25-50 | 50-100 |
-| **Protocol Mimicry** | HTTPS | QUIC | HTTPS | HTTPS |
-| **Fragmentation** | Enabled | Disabled | Basic | Full |
-| **SNI Fragmentation** | Yes | No | Yes | Yes |
-| **Random Padding** | Optimized | Minimal | Medium | Maximum |
-| **Timing Randomization** | Balanced | Basic | Medium | Complex |
-| **Memory Usage** | ~75MB | ~50MB | ~100MB | ~200MB |
-| **CPU Usage** | Low-Medium | Low | Medium | High |
-| **Global Compatibility** | ✅ Excellent | ⚠️ Limited | ✅ Good | ✅ Maximum |
-
-## 🌍 Regional Recommendations
 
 ### 🌟 Universal First Choice
 - **ALL COUNTRIES**: Start with `sample-working.json` - tested worldwide
 
-### Fallback Options (if sample-working doesn't work)
-- **China/Iran/Russia**: Try `heavy-obfuscation.json` 
-- **Corporate Networks**: Try `moderate-obfuscation.json`
-- **Light Filtering**: Try `basic-obfuscation.json`
-
-### Country-Specific Success Reports
-- **China 🇨🇳**: sample-working.json ✅ (95% success rate)
-- **Iran 🇮🇷**: sample-working.json ✅ (90% success rate) 
-- **Russia 🇷🇺**: sample-working.json ✅ (85% success rate)
-- **Corporate Networks 🏢**: sample-working.json ✅ (98% success rate)
-- **Europe/Americas 🌍**: sample-working.json ✅ (99% success rate)
 
 ## 🔧 Customization
 
@@ -277,7 +259,7 @@ For detailed configuration options, see this complete Configuration Guide.
 **2. Missing Key for Gool Mode**  
 Do not place the key if you want the core to handle registration itself. Use your key only if you have a professional paid Cloudflare account.
 ```json
-✅ "key": "your-warp-license-key-here"  // Required for --gool mode
+ "key": "your-warp-license-key-here"  
 ```
 
 **3. Config File vs CLI Flags**

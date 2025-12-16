@@ -42,7 +42,7 @@ vwarp --config my-config.json --masque
 
 ### Prerequisites
 
-- [Download the latest version from the releases page](https://github.com/bepass-org/vwarp/releases)
+- [Download the latest version from the releases page](https://github.com/voidr3aper-anon/vwarp/releases)
 - Basic understanding of VPN and proxy configurations
 
 ### Command Line Usage
@@ -52,9 +52,11 @@ vwarp --config my-config.json --masque
 vwarp -h
 
 # Basic usage patterns
+vwarp --config my-config.json             # Give a Config File 
 vwarp --masque --noize-preset <preset>    # MASQUE with obfuscation
-vwarp --config <file> --masque            # Config file approach
-vwarp --gool --key <key>                  # Warp-in-Warp mode
+vwarp --gool 
+vwarp --config <file> --masque            # Config file approach with proto  prefer(can be determind in the config file)
+vwarp --config <file> --gool              # Warp-in-Warp mode with config 
 ```
 
 For complete CLI reference and configuration options, see the [Configuration Guide](docs/CONFIG_FORGE.md).
@@ -71,24 +73,6 @@ For comprehensive usage examples and configuration scenarios, see:
 vwarp supports Psiphon for additional censorship circumvention. Use `--cfon --country <CODE>` where CODE is a two-letter country code (US, CA, DE, etc.).
 
 For complete country code list, see the [Configuration Guide](docs/CONFIG_FORGE.md).
-![0](https://raw.githubusercontent.com/Ptechgithub/configs/main/media/line.gif)
-### Termux
-
-```
-bash <(curl -fsSL https://raw.githubusercontent.com/bepass-org/vwarp/master/termux.sh)
-```
-![1](https://github.com/Ptechgithub/configs/blob/main/media/18.jpg?raw=true)
-
-- اگه حس کردی کانکت نمیشه یا خطا میده دستور `rm -rf .cache/vwarp` رو بزن و مجدد warp رو وارد کن.
-- بعد از نصب برای اجرای مجدد فقط کافیه که `warp` یا `usef` یا `./warp` یا `vwarp`را وارد کنید. همش یکیه هیچ فرقی ندارد.
-- اگر با 1 نصب نشد و خطا گرفتید ابتدا یک بار 3 را بزنید تا `Uninstall` شود سپس عدد 2 رو انتخاب کنید یعنی Arm.
-- برای نمایش راهنما ` warp -h` را وارد کنید. 
-- ای پی و پورت `127.0.0.1:8086`پروتکل socks
-- در روش تبدیل اکانت  warp به warp plus (گزینه 6) مقدار ID را وارد میکنید. پس از اجرای warp دو اکانت برای شما ساخته شده که پس از انتخاب گزینه 6 خودش مقدار ID هر دو اکانت را پیدا میکند و شما باید هر بار یکی را انتخاب کنید و یا میتوانید با انتخاب manual مقدار ID دیگری را وارد کنید (مثلا برای خود برنامه ی 1.1.1.1 یا جای دیگر) با این کار هر 20 ثانیه 1 GB به اکانت شما اضافه میشود. و اکانت شما از حالت رایگان به پلاس تبدیل میشود. 
-- برای تغییر  لوکیشن با استفاده از سایفون از طریق منو یا به صورت دستی (برای مثال به USA  از دستور  زیر استفاده کنید) 
-- `warp --cfon --country US`
-- برای اسکن ای پی سالم وارپ از دستور `warp --scan` استفاده کنید. 
-- برای ترکیب (chain) دو کانفیگ برای تغییر لوکیشن از دستور `warp --gool` استفاده کنید. 
 
 ## 📚 Documentation
 
@@ -103,7 +87,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/bepass-org/vwarp/master/term
 
 
 
-## 🛠️ Configuration
+##  Configuration
 
 vwarp supports both CLI flags and configuration files. For production use, configuration files are recommended.
 
@@ -116,6 +100,13 @@ vwarp --config my-config.json --masque
 
 **Complete configuration reference:** [Configuration Guide](docs/CONFIG_FORGE.md)
 
+## License
+
+This repository is a fork of [vwarp] (MIT licensed).
+Original files are © their respective authors and remain under the MIT License.
+All additional changes and new files in this fork are © voidreaper and licensed under [LICENSE-GPL-3.0], see LICENSE-GPL-3.0. all new feature tricks and ideas are not allowed to copy or pull from this  repo to the main repo or other similar project unless the maintainers have granted permission.
+
+
 ## Acknowledgements
 
 - **Maintainer**: [voidreaper](https://github.com/voidr3aper-anon)
@@ -124,13 +115,6 @@ vwarp --config my-config.json --masque
 - WireGuard Protocol
 - Original Bepass-org team
 - All contributors and supporters of this project
-
-## License
-
-This repository is a fork of [vwarp] (MIT licensed).
-Original files are © their respective authors and remain under the MIT License.
-All additional changes and new files in this fork are © voidreaper and licensed under [LICENSE-GPL-3.0], see LICENSE-GPL-3.0. all new feature tricks and ideas are not allowed to copy or pull from this  repo to the main repo or other similar project unless the maintainers have granted permission.
-
-
+- 
 ## Moto 
  Beside Licensing , we honor the main developer of the code yousef Ghobadi ,and We coutinue the way of actively help the people access internet of freedom. We are legion. 
