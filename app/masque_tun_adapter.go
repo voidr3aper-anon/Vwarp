@@ -78,6 +78,9 @@ func isConnectionError(err error) bool {
 		"transport endpoint is not connected",
 		"socket is not connected",
 		"network interface is down",
+		"connection reset by peer",
+		"EOF",
+		"broken pipe",
 	}
 
 	// Mobile and platform-specific errors
@@ -126,6 +129,20 @@ const (
 	ConnectivityTestTimeout  = 8 * time.Second
 )
 
+// Global connection failure tracking for firewall detection
+var globalConnectionFailures atomic.Int64
+var globalLastFailureReset atomic.Int64
+
+func init() {
+	globalLastFailureReset.Store(time.Now().Unix())
+}
+
+// TrackConnectionFailure increments the global connection failure counter
+// This helps detect firewall interference patterns
+func TrackConnectionFailure() {
+	globalConnectionFailures.Add(1)
+}
+
 // maintainMasqueTunnel continuously forwards packets between the TUN device and MASQUE
 // with automatic reconnection on connection failures
 func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.MasqueAdapter, factory AdapterFactory, device *netstackTunAdapter, mtu int, tnet *netstack.Net, testURL string) {
@@ -139,11 +156,15 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 	var lastSuccessfulRead atomic.Int64
 	var lastSuccessfulWrite atomic.Int64
 	var lastRecoveryTime atomic.Int64
-	var adapterMutex sync.RWMutex // Protect adapter access during replacement
+	var connectionFailures atomic.Int64 // Track connection failures for firewall detection
+	var lastFailureReset atomic.Int64   // Time when failure counter was last reset
+	var adapterMutex sync.RWMutex       // Protect adapter access during replacement
 
 	// Initialize timestamps
-	lastSuccessfulRead.Store(time.Now().Unix())
-	lastSuccessfulWrite.Store(time.Now().Unix())
+	now := time.Now().Unix()
+	lastSuccessfulRead.Store(now)
+	lastSuccessfulWrite.Store(now)
+	lastFailureReset.Store(now)
 
 	// Forward packets from netstack to MASQUE
 	go func() {
@@ -181,6 +202,9 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 			if err != nil {
 				if isConnectionError(err) {
 					writeErrors++
+					connectionFailures.Add(1) // Track local failure
+					TrackConnectionFailure()  // Track global failure
+					
 					// Be more tolerant - require multiple consecutive errors before marking as broken
 					if writeErrors >= 3 && !connectionBroken.Load() {
 						l.Warn("MASQUE connection error detected on write", "error", err, "consecutive_errors", writeErrors)
@@ -242,6 +266,8 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 
 				if isConnectionError(err) {
 					consecutiveErrors++
+					connectionFailures.Add(1) // Track local failure
+					TrackConnectionFailure()  // Track global failure
 
 					// Categorize error types for better handling
 					errStr := err.Error()
@@ -318,11 +344,15 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 				lastRecovery := lastRecoveryTime.Load()
 				recoveryCooldown := now-lastRecovery < int64(RecoveryCooldownPeriod.Seconds())
 
-				// Be more conservative about triggering health checks - require both read AND write to be stale
+				// More aggressive monitoring - trigger on read OR write issues, or high failure rate
 				readStale := now-lastRead > int64(StaleConnectionThreshold.Seconds())
 				writeStale := now-lastWrite > int64(StaleConnectionThreshold.Seconds())
+				failures := connectionFailures.Load()
+				
+				// Trigger if either read/write is stale OR we have connection failures
+				connectionIssues := (readStale || writeStale) || failures >= 3
 
-				if !connectionBroken.Load() && !recoveryCooldown && readStale && writeStale {
+				if !connectionBroken.Load() && !recoveryCooldown && connectionIssues {
 					l.Warn("Connection appears stale, triggering health check",
 						"seconds_since_read", now-lastRead,
 						"seconds_since_write", now-lastWrite)
@@ -332,6 +362,55 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 					case connectionDown <- true:
 					default:
 					}
+				}
+			}
+		}
+	}()
+
+	// Connection failure monitoring goroutine - detect firewall interference
+	go func() {
+		failureCheckTicker := time.NewTicker(30 * time.Second) // Check every 30 seconds
+		defer failureCheckTicker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-failureCheckTicker.C:
+				now := time.Now().Unix()
+				lastReset := lastFailureReset.Load()
+				failures := connectionFailures.Load()
+				globalFailures := globalConnectionFailures.Load()
+				globalLastReset := globalLastFailureReset.Load()
+
+				// If we have many failures in a short period, likely firewall interference
+				timeSinceReset := now - lastReset
+				globalTimeSinceReset := now - globalLastReset
+				
+				// Check both local and global failure rates
+				localHighFailures := failures >= 5 && timeSinceReset < 120 // 5+ failures in 2 minutes
+				globalHighFailures := globalFailures >= 8 && globalTimeSinceReset < 180 // 8+ global failures in 3 minutes
+				
+				if localHighFailures || globalHighFailures {
+					if !connectionBroken.Load() {
+						l.Warn("High connection failure rate detected, likely firewall interference",
+							"failures", failures,
+							"time_window_seconds", timeSinceReset)
+
+						// Trigger reconnection
+						connectionBroken.Store(true)
+						select {
+						case connectionDown <- true:
+						default:
+						}
+					}
+				}
+
+				// Reset failure counter every 5 minutes if no reconnection needed
+				if timeSinceReset > 300 && failures > 0 {
+					connectionFailures.Store(0)
+					lastFailureReset.Store(now)
+					l.Debug("Connection failure counter reset", "previous_failures", failures)
 				}
 			}
 		}
@@ -449,6 +528,12 @@ func maintainMasqueTunnel(ctx context.Context, l *slog.Logger, adapter *masque.M
 				// Handle recovery outcome
 				if successfulRecovery {
 					recoveryAttempts = 0 // Reset counter on success
+					// Reset failure counters after successful recovery
+					connectionFailures.Store(0)
+					lastFailureReset.Store(time.Now().Unix())
+					globalConnectionFailures.Store(0)
+					globalLastFailureReset.Store(time.Now().Unix())
+					
 					l.Info("MASQUE connection recovery successful")
 
 					// Drain any queued connectionDown signals that occurred during recovery
