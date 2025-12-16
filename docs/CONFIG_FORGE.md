@@ -175,7 +175,7 @@ Use any of the above configurations as templates for creating custom configurati
 **Asia-Pacific**: JP, SG, AU, IN  
 
 you can finid what countriy each one is by following the appropiate readme :
-https://www.iso.org/obp/ui/#search
+[country codes](https://countrycode.org/)
 
 ## 🚀 Usage Examples
 
