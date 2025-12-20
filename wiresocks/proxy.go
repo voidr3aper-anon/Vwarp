@@ -58,6 +58,7 @@ func StartProxy(ctx context.Context, l *slog.Logger, tnet *netstack.Net, bindAdd
 	go func() {
 		<-vt.Ctx.Done()
 		vt.Stop()
+		ln.Close()
 	}()
 
 	return ln.Addr().(*net.TCPAddr).AddrPort(), nil
