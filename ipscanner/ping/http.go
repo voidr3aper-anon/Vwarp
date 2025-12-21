@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/bepass-org/vwarp/ipscanner/statute"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 	"io"
 	"net/http"
 	"net/netip"

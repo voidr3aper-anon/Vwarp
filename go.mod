@@ -1,4 +1,4 @@
-module github.com/bepass-org/vwarp
+module github.com/voidr3aper-anon/Vwarp
 
 go 1.24.1
 

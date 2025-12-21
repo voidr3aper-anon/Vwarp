@@ -20,10 +20,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bepass-org/vwarp/wireguard/conn"
-	"github.com/bepass-org/vwarp/wireguard/conn/bindtest"
-	"github.com/bepass-org/vwarp/wireguard/tun"
-	"github.com/bepass-org/vwarp/wireguard/tun/tuntest"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/conn"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/conn/bindtest"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/tun"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/tun/tuntest"
 )
 
 // uapiCfg returns a string that contains cfg formatted use with IpcSet.

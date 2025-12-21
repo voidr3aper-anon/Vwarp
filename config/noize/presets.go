@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bepass-org/vwarp/masque/noize"
-	"github.com/bepass-org/vwarp/wireguard/preflightbind"
+	"github.com/voidr3aper-anon/Vwarp/masque/noize"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/preflightbind"
 )
 
 // PresetType represents the type of preset configuration

@@ -8,7 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/bepass-org/vwarp/ipscanner/statute"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 	"math/big"
 	"net"
 	"net/netip"

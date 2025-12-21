@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"github.com/bepass-org/vwarp/ipscanner/statute"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 	"log/slog"
 	"sort"
 	"sync"

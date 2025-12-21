@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bepass-org/vwarp/wireguard/conn"
-	"github.com/bepass-org/vwarp/wireguard/ratelimiter"
-	"github.com/bepass-org/vwarp/wireguard/rwcancel"
-	"github.com/bepass-org/vwarp/wireguard/tun"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/conn"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/ratelimiter"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/rwcancel"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/tun"
 )
 
 type Device struct {

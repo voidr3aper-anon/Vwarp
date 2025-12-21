@@ -12,16 +12,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bepass-org/vwarp/config/noize"
-	"github.com/bepass-org/vwarp/iputils"
-	"github.com/bepass-org/vwarp/masque"
-	masquenoize "github.com/bepass-org/vwarp/masque/noize"
-	"github.com/bepass-org/vwarp/psiphon"
-	"github.com/bepass-org/vwarp/warp"
-	"github.com/bepass-org/vwarp/wireguard/preflightbind"
-	"github.com/bepass-org/vwarp/wireguard/tun"
-	"github.com/bepass-org/vwarp/wireguard/tun/netstack"
-	"github.com/bepass-org/vwarp/wiresocks"
+	"github.com/voidr3aper-anon/Vwarp/config/noize"
+	"github.com/voidr3aper-anon/Vwarp/iputils"
+	"github.com/voidr3aper-anon/Vwarp/masque"
+	masquenoize "github.com/voidr3aper-anon/Vwarp/masque/noize"
+	"github.com/voidr3aper-anon/Vwarp/psiphon"
+	"github.com/voidr3aper-anon/Vwarp/warp"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/preflightbind"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/tun"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/tun/netstack"
+	"github.com/voidr3aper-anon/Vwarp/wiresocks"
 )
 
 const singleMTU = 1280 // MASQUE/QUIC tunnel MTU (standard MTU matching usque)

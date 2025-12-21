@@ -11,7 +11,7 @@ import (
 	"os"
 
 	connectip "github.com/Diniboy1123/connect-ip-go"
-	"github.com/bepass-org/vwarp/masque/noize"
+	"github.com/voidr3aper-anon/Vwarp/masque/noize"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/yosida95/uritemplate/v3"

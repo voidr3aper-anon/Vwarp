@@ -12,7 +12,7 @@ import (
 	"net/netip"
 	"os"
 
-	"github.com/bepass-org/vwarp/wireguard/conn"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/conn"
 )
 
 type ChannelBind struct {
