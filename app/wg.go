@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -22,7 +23,11 @@ import (
 
 func usermodeTunTest(ctx context.Context, l *slog.Logger, tnet *netstack.Net, url string) error {
 	// Wait a bit after handshake to ensure connection is stable
-	time.Sleep(2 * time.Second)
+	select {
+	case <-ctx.Done():
+		return errors.New("context canceled")
+	case <-time.After(2 * time.Second):
+	}
 
 	l.Info("testing connectivity", "url", url)
 
@@ -51,7 +56,13 @@ func usermodeTunTest(ctx context.Context, l *slog.Logger, tnet *netstack.Net, ur
 		Transport: transport,
 	}
 
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		l.Error("connectivity test socket failed", "error", err, "url", url)
+		return err
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		l.Error("connectivity test failed", "error", err, "url", url)
 		return err
@@ -190,7 +201,7 @@ func waitHandshake(ctx context.Context, l *slog.Logger, dev *device.Device) erro
 	return nil
 }
 
-func establishWireguard(l *slog.Logger, conf *wiresocks.Configuration, tunDev wgtun.Device, fwmark uint32, t string, AtomicNoizeConfig *preflightbind.AtomicNoizeConfig, proxyAddress string) error {
+func establishWireguard(ctx context.Context, l *slog.Logger, conf *wiresocks.Configuration, tunDev wgtun.Device, fwmark uint32, t string, AtomicNoizeConfig *preflightbind.AtomicNoizeConfig, proxyAddress string) error {
 	// create the IPC message to establish the wireguard conn
 	var request bytes.Buffer
 
@@ -266,17 +277,26 @@ func establishWireguard(l *slog.Logger, conf *wiresocks.Configuration, tunDev wg
 		device.NewSLogger(l.With("subsystem", "wireguard-go")),
 	)
 
-	if err := dev.IpcSet(request.String()); err != nil {
-		return err
+	IpcSetCh := make(chan error, 1)
+	go func() {
+		IpcSetCh <- dev.IpcSet(request.String())
+	}()
+	select {
+	case <-ctx.Done():
+		return errors.New("context canceled")
+	case err := <-IpcSetCh:
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := dev.Up(); err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(15*time.Second))
-	defer cancel()
-	if err := waitHandshake(ctx, l, dev); err != nil {
+	handshakeCTX, handshakeCancel := context.WithDeadline(ctx, time.Now().Add(15*time.Second))
+	defer handshakeCancel()
+	if err := waitHandshake(handshakeCTX, l, dev); err != nil {
 		dev.BindClose()
 		dev.Close()
 		return err
