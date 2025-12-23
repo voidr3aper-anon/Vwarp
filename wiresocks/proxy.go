@@ -3,7 +3,6 @@ package wiresocks
 import (
 	"context"
 	"errors"
-	"github.com/sagernet/sing/common/buf"
 	"io"
 	"log/slog"
 	"net"
@@ -11,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sagernet/sing/common/buf"
 	"github.com/voidr3aper-anon/Vwarp/proxy/pkg/mixed"
 	"github.com/voidr3aper-anon/Vwarp/proxy/pkg/statute"
 	"github.com/voidr3aper-anon/Vwarp/wireguard/device"
@@ -31,7 +31,8 @@ var BuffSize = 65536
 
 // StartProxy spawns a socks5 server.
 func StartProxy(ctx context.Context, l *slog.Logger, tnet *netstack.Net, bindAddress netip.AddrPort) (netip.AddrPort, error) {
-	ln, err := net.Listen("tcp", bindAddress.String())
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", bindAddress.String())
 	if err != nil {
 		return netip.AddrPort{}, err // Return error if binding was unsuccessful
 	}

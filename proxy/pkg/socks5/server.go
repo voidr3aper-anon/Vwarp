@@ -60,7 +60,8 @@ type ServerOption func(*Server)
 func (s *Server) ListenAndServe() error {
 	// Create a new listener
 	if s.Listener == nil {
-		ln, err := net.Listen("tcp", s.Bind)
+		var lc net.ListenConfig
+		ln, err := lc.Listen(s.Context, "tcp", s.Bind)
 		if err != nil {
 			return err // Return error if binding was unsuccessful
 		}
@@ -69,20 +70,11 @@ func (s *Server) ListenAndServe() error {
 
 	s.Bind = s.Listener.Addr().(*net.TCPAddr).String()
 
-	// ensure listener will be closed
-	defer func() {
-		_ = s.Listener.Close()
-	}()
-
-	// Create a cancelable context based on s.Context
-	ctx, cancel := context.WithCancel(s.Context)
-	defer cancel() // Ensure resources are cleaned up
-
 	// Start to accept connections and serve them
 	for {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-s.Context.Done():
+			return nil
 		default:
 			conn, err := s.Listener.Accept()
 			if err != nil {
