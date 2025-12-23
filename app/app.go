@@ -717,9 +717,6 @@ func runWarpWithMasque(ctx context.Context, l *slog.Logger, opts WarpOptions, en
 	}
 
 	l.Info("serving proxy via MASQUE tunnel", "address", actualBind)
-
-	// Keep running until context is cancelled
-	<-ctx.Done()
 	return nil
 }
 
