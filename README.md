@@ -42,7 +42,7 @@ vwarp --config my-config.json --masque
 
 ### Prerequisites
 
-- [Download the latest version from the releases page](https://github.com/bepass-org/vwarp/releases)
+- [Download the latest version from the releases page](https://github.com/voidr3aper-anon/Vwarp/releases)
 - Basic understanding of VPN and proxy configurations
 
 ### Command Line Usage
@@ -75,7 +75,7 @@ For complete country code list, see the [Configuration Guide](docs/CONFIG_FORGE.
 ### Termux
 
 ```
-bash <(curl -fsSL https://raw.githubusercontent.com/bepass-org/vwarp/master/termux.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/voidr3aper-anon/Vwarp/master/termux.sh)
 ```
 ![1](https://github.com/Ptechgithub/configs/blob/main/media/18.jpg?raw=true)
 

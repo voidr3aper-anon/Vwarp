@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/netip"
 
-	"github.com/bepass-org/vwarp/ipscanner/statute"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 )
 
 type Ping struct {

@@ -8,11 +8,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/bepass-org/vwarp/ipscanner"
-	"github.com/bepass-org/vwarp/ipscanner/statute"
-	"github.com/bepass-org/vwarp/warp"
 	"github.com/fatih/color"
 	"github.com/rodaine/table"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
+	"github.com/voidr3aper-anon/Vwarp/warp"
 )
 
 var (

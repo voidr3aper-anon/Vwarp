@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/bepass-org/vwarp/ipscanner/statute"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 )
 
 type TcpPingResult struct {

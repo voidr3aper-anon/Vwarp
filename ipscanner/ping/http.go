@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/bepass-org/vwarp/ipscanner/statute"
 	"io"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"time"
+
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 )
 
 type HttpPingResult struct {

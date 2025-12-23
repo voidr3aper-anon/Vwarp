@@ -8,11 +8,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/bepass-org/vwarp/ipscanner/statute"
 	"math/big"
 	"net"
 	"net/netip"
 	"time"
+
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 
 	"github.com/flynn/noise"
 	"golang.org/x/crypto/blake2s"

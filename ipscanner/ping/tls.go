@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/bepass-org/vwarp/ipscanner/statute"
 	"net/netip"
 	"time"
+
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 )
 
 type TlsPingResult struct {
