@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bepass-org/vwarp/config/noize"
+	"github.com/voidr3aper-anon/Vwarp/config/noize"
 )
 
 // UnifiedConfig represents the complete application configuration

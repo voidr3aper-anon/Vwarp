@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bepass-org/vwarp/wireguard/conn"
-	"github.com/bepass-org/vwarp/wireguard/device"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/conn"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/device"
 )
 
 var rng = mathrand.New(mathrand.NewSource(time.Now().UnixNano()))

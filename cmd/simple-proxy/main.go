@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bepass-org/vwarp/masque"
+	"github.com/voidr3aper-anon/Vwarp/masque"
 )
 
 type SimpleProxy struct {

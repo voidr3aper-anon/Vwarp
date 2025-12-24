@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bepass-org/vwarp/masque"
+	"github.com/voidr3aper-anon/Vwarp/masque"
 )
 
 // Example 1: Simple auto-registration

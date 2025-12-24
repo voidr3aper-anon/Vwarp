@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bepass-org/vwarp/ipscanner"
-	"github.com/bepass-org/vwarp/warp"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner"
+	"github.com/voidr3aper-anon/Vwarp/warp"
 )
 
 type ScanOptions struct {

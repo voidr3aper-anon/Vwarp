@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bepass-org/vwarp/ipscanner/engine"
-	"github.com/bepass-org/vwarp/ipscanner/statute"
-	"github.com/bepass-org/vwarp/warp"
 	"github.com/noql-net/certpool"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/engine"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
+	"github.com/voidr3aper-anon/Vwarp/warp"
 )
 
 type IPScanner struct {

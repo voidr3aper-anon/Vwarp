@@ -3,11 +3,12 @@ package iterator
 import (
 	"crypto/rand"
 	"errors"
-	"github.com/bepass-org/vwarp/ipscanner/statute"
 	"math/big"
 	"net"
 	"net/netip"
 	"sync"
+
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 )
 
 // LCG represents a linear congruential generator with full period.

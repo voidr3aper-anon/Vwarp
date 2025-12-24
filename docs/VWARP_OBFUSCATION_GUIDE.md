@@ -363,4 +363,4 @@ vwarp --masque --masque-noize --masque-noize-preset heavy
 3. **Adjust Timing**: Balance obfuscation effectiveness with connection latency
 4. **Test Incrementally**: Change one parameter at a time to identify optimal settings
 
-For additional help, check the [vwarp GitHub repository](https://github.com/bepass-org/vwarp) or join our [Telegram channel](https://t.me/VoidVerge).
+For additional help, check the [vwarp GitHub repository](https://github.com/voidr3aper-anon/Vwarp) or join our [Telegram channel](https://t.me/VoidVerge).

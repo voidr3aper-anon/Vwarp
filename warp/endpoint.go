@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/bepass-org/vwarp/iputils"
+	"github.com/voidr3aper-anon/Vwarp/iputils"
 )
 
 func WarpPrefixes() []netip.Prefix {

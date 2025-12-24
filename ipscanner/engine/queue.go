@@ -1,10 +1,11 @@
 package engine
 
 import (
-	"github.com/bepass-org/vwarp/ipscanner/statute"
 	"log/slog"
 	"sort"
 	"sync"
+
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 )
 
 type IPQueue struct {

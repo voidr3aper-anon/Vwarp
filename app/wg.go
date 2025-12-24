@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bepass-org/vwarp/wireguard/conn"
-	"github.com/bepass-org/vwarp/wireguard/device"
-	"github.com/bepass-org/vwarp/wireguard/preflightbind"
-	wgtun "github.com/bepass-org/vwarp/wireguard/tun"
-	"github.com/bepass-org/vwarp/wireguard/tun/netstack"
-	"github.com/bepass-org/vwarp/wiresocks"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/conn"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/device"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/preflightbind"
+	wgtun "github.com/voidr3aper-anon/Vwarp/wireguard/tun"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/tun/netstack"
+	"github.com/voidr3aper-anon/Vwarp/wiresocks"
 )
 
 func usermodeTunTest(ctx context.Context, l *slog.Logger, tnet *netstack.Net, url string) error {

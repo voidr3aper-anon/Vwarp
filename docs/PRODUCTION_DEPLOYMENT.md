@@ -7,7 +7,7 @@ This guide covers production deployment, monitoring, and maintenance of vwarp in
 ### Binary Installation
 ```bash
 # Download latest release
-wget https://github.com/bepass-org/vwarp/releases/latest/download/vwarp-linux
+wget https://github.com/voidr3aper-anon/Vwarp/releases/latest/download/vwarp-linux
 chmod +x vwarp-linux
 sudo mv vwarp-linux /usr/local/bin/vwarp
 
@@ -17,7 +17,7 @@ vwarp version
 
 ### Build from Source
 ```bash
-git clone https://github.com/bepass-org/vwarp.git
+git clone https://github.com/voidr3aper-anon/Vwarp.git
 cd vwarp
 go build -o vwarp cmd/vwarp/*.go
 ```
@@ -392,7 +392,7 @@ fi
 cp /opt/vwarp/config/production.json /opt/vwarp/config/production.json.bak.$(date +%Y%m%d)
 
 # Download new version
-wget https://github.com/bepass-org/vwarp/releases/latest/download/vwarp-linux -O /tmp/vwarp-new
+wget https://github.com/voidr3aper-anon/Vwarp/releases/latest/download/vwarp-linux -O /tmp/vwarp-new
 
 # Test new version
 /tmp/vwarp-new --config /opt/vwarp/config/production.json --masque &

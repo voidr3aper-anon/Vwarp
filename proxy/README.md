@@ -23,7 +23,7 @@ The Inbound Proxy project offers the following features:
 ## Installation
 
 ```bash
-go get github.com/bepass-org/proxy
+go get github.com/voidr3aper-anon/proxy
 ```
 
 ### Examples
@@ -34,7 +34,7 @@ go get github.com/bepass-org/proxy
 package main
 
 import (
-	"github.com/bepass-org/proxy/pkg/mixed"
+	"github.com/voidr3aper-anon/proxy/pkg/mixed"
 )
 
 func main() {
@@ -49,7 +49,7 @@ func main() {
 package main
 
 import (
-  "github.com/bepass-org/proxy/pkg/mixed"
+  "github.com/voidr3aper-anon/proxy/pkg/mixed"
 )
 
 func main() {
@@ -61,7 +61,7 @@ func main() {
 
 ```
 
-There are other examples provided in the [example](https://github.com/bepass-org/proxy/tree/main/example) directory
+There are other examples provided in the [example](https://github.com/voidr3aper-anon/proxy/tree/main/example) directory
 
 
 

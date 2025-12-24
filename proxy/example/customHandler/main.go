@@ -6,8 +6,8 @@ import (
 	"log"
 	"net"
 
-	"github.com/bepass-org/vwarp/proxy/pkg/mixed"
-	"github.com/bepass-org/vwarp/proxy/pkg/statute"
+	"github.com/voidr3aper-anon/Vwarp/proxy/pkg/mixed"
+	"github.com/voidr3aper-anon/Vwarp/proxy/pkg/statute"
 )
 
 func main() {

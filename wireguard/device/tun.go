@@ -8,7 +8,7 @@ package device
 import (
 	"fmt"
 
-	"github.com/bepass-org/vwarp/wireguard/tun"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/tun"
 )
 
 const DefaultMTU = 1420

@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bepass-org/vwarp/masque/noize"
+	"github.com/voidr3aper-anon/Vwarp/masque/noize"
 
 	connectip "github.com/Diniboy1123/connect-ip-go"
 	"github.com/Diniboy1123/usque/api"

@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/bepass-org/vwarp/ipscanner"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner"
 )
 
 func main() {

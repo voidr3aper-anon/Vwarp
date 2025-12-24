@@ -7,7 +7,7 @@
 
 package device
 
-import "github.com/bepass-org/vwarp/wireguard/conn"
+import "github.com/voidr3aper-anon/Vwarp/wireguard/conn"
 
 const (
 	QueueStagedSize            = conn.IdealBatchSize

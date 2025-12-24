@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"net/netip"
 
-	"github.com/bepass-org/vwarp/masque"
+	"github.com/voidr3aper-anon/Vwarp/masque"
 )
 
 // randomMasqueEndpoint returns a random MASQUE endpoint from Cloudflare's ranges

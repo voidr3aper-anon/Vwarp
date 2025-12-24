@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bepass-org/vwarp/ipscanner/statute"
+	"github.com/voidr3aper-anon/Vwarp/ipscanner/statute"
 )
 
 // Minimal ICMP echo implementation.

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bepass-org/vwarp/masque/noize"
-	"github.com/bepass-org/vwarp/wireguard/preflightbind"
+	"github.com/voidr3aper-anon/Vwarp/masque/noize"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/preflightbind"
 )
 
 // PresetType represents the type of preset configuration
@@ -84,8 +84,8 @@ func (pm *PresetManager) createMinimalPreset() *UnifiedNoizeConfig {
 		Enabled: true,
 		Preset:  "minimal",
 		AtomicNoize: &preflightbind.AtomicNoizeConfig{
-			I1:             "",        // No signature packets
-			Jc:             0,         // No junk packets
+			I1:             "", // No signature packets
+			Jc:             0,  // No junk packets
 			Jmin:           0,
 			Jmax:           0,
 			JcAfterI1:      0,

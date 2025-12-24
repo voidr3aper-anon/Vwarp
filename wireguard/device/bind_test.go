@@ -8,7 +8,7 @@ package device
 import (
 	"errors"
 
-	"github.com/bepass-org/vwarp/wireguard/conn"
+	"github.com/voidr3aper-anon/Vwarp/wireguard/conn"
 )
 
 type DummyDatagram struct {
