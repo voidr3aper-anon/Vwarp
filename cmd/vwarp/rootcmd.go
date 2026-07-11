@@ -17,7 +17,6 @@ import (
 	"github.com/voidr3aper-anon/Vwarp/app"
 	"github.com/voidr3aper-anon/Vwarp/config"
 	"github.com/voidr3aper-anon/Vwarp/config/noize"
-	p "github.com/voidr3aper-anon/Vwarp/psiphon"
 	"github.com/voidr3aper-anon/Vwarp/warp"
 	"github.com/voidr3aper-anon/Vwarp/wiresocks"
 )
@@ -141,7 +140,7 @@ func newRootCmd() *rootConfig {
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{
 		LongName: "country",
-		Value:    ffval.NewEnum(&cfg.country, p.Countries...),
+		Value:    ffval.NewEnum(&cfg.country, supportedPsiphonCountries()...),
 		Usage:    "psiphon country code",
 	})
 	cfg.flags.AddFlag(ff.FlagConfig{

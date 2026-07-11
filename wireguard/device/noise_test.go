@@ -71,8 +71,12 @@ func TestNoiseHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	peer1.Start()
-	peer2.Start()
+	// ConsumeMessageInitiation requires a running peer; mark peers running
+	// without starting background routines that can race this deterministic test.
+	peer1.isRunning.Store(true)
+	peer2.isRunning.Store(true)
+	defer peer1.isRunning.Store(false)
+	defer peer2.isRunning.Store(false)
 
 	assertEqual(
 		t,

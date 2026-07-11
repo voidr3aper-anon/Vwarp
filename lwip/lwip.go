@@ -1,5 +1,5 @@
-//go:build !ios
-// +build !ios
+//go:build android
+// +build android
 
 package lwip
 

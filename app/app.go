@@ -16,7 +16,6 @@ import (
 	"github.com/voidr3aper-anon/Vwarp/iputils"
 	"github.com/voidr3aper-anon/Vwarp/masque"
 	masquenoize "github.com/voidr3aper-anon/Vwarp/masque/noize"
-	"github.com/voidr3aper-anon/Vwarp/psiphon"
 	"github.com/voidr3aper-anon/Vwarp/warp"
 	"github.com/voidr3aper-anon/Vwarp/wireguard/preflightbind"
 	"github.com/voidr3aper-anon/Vwarp/wireguard/tun"
@@ -479,8 +478,8 @@ func runWarpWithPsiphon(ctx context.Context, l *slog.Logger, opts WarpOptions, e
 		return err
 	}
 
-	// run psiphon
-	err = psiphon.RunPsiphon(ctx, l.With("subsystem", "psiphon"), warpBind, opts.CacheDir, opts.Bind, opts.Psiphon.Country)
+	// run psiphon (implementation is Go-version gated)
+	err = runPsiphon(ctx, l.With("subsystem", "psiphon"), warpBind, opts.CacheDir, opts.Bind, opts.Psiphon.Country)
 	if err != nil {
 		return fmt.Errorf("unable to run psiphon %w", err)
 	}
