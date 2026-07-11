@@ -66,6 +66,13 @@ type NoizeConfig struct {
 	SNIFragment      int      // SNI fragment size
 	FakeALPN         []string // Fake ALPN protocols to advertise
 
+	// === TCP Preflight Camouflage ===
+	TCPPreflightMode    string   // Optional TCP cover traffic before QUIC: "", "connect", "tls-h2", "tls-http11"
+	TCPPreflightSNI     string   // Override SNI for TCP/TLS preflight
+	TCPPreflightALPN    []string // Override ALPN list for TCP/TLS preflight
+	TCPPreflightDelay   time.Duration
+	TCPPreflightTimeout time.Duration
+
 	// === Advanced Features ===
 	ReversedOrder    bool // Send packets in reversed order
 	DuplicatePackets bool // Duplicate certain packets
@@ -144,6 +151,10 @@ func DefaultConfig() *NoizeConfig {
 
 		SNIFragmentation: true,
 		SNIFragment:      32,
+
+		TCPPreflightMode:    "",
+		TCPPreflightDelay:   0,
+		TCPPreflightTimeout: 2 * time.Second,
 
 		UseTimestamp: true,
 		UseNonce:     true,
@@ -257,13 +268,9 @@ func (n *Noize) ObfuscateWrite(packet []byte, addr *net.UDPAddr) ([]byte, error)
 		}
 	}
 
-	// Apply padding
-	packet = n.addPadding(packet)
-
-	// Apply protocol wrapper
-	if n.config.MimicProtocol != "" {
-		packet = n.wrapProtocol(packet, packetType)
-	}
+	// Keep real QUIC packet bytes untouched.
+	// MASQUE/QUIC requires exact wire format; protocol mimicry and padding are
+	// applied to decoy junk packets instead.
 
 	// Apply random delay
 	n.applyDelay()
@@ -759,7 +766,7 @@ func LoadConfigFromFile(filepath string) (*NoizeConfig, error) {
 	config := &NoizeConfig{}
 
 	// Handle all duration fields manually
-	durationFields := []string{"JunkInterval", "HandshakeDelay", "PacketDelay", "DelayMin", "DelayMax", "FragmentDelay"}
+	durationFields := []string{"JunkInterval", "HandshakeDelay", "PacketDelay", "DelayMin", "DelayMax", "FragmentDelay", "TCPPreflightDelay", "TCPPreflightTimeout"}
 
 	for _, field := range durationFields {
 		if val, ok := rawConfig[field]; ok {
@@ -778,6 +785,10 @@ func LoadConfigFromFile(filepath string) (*NoizeConfig, error) {
 						config.DelayMax = dur
 					case "FragmentDelay":
 						config.FragmentDelay = dur
+					case "TCPPreflightDelay":
+						config.TCPPreflightDelay = dur
+					case "TCPPreflightTimeout":
+						config.TCPPreflightTimeout = dur
 					}
 				}
 			}
@@ -832,6 +843,8 @@ func (c *NoizeConfig) SaveConfigToFile(filepath string) error {
 		"FakeLoss":         c.FakeLoss,
 		"SNIFragmentation": c.SNIFragmentation,
 		"SNIFragment":      c.SNIFragment,
+		"TCPPreflightMode": c.TCPPreflightMode,
+		"TCPPreflightSNI":  c.TCPPreflightSNI,
 	}
 
 	// Add duration fields as strings (include zero values too)
@@ -841,10 +854,15 @@ func (c *NoizeConfig) SaveConfigToFile(filepath string) error {
 	configMap["DelayMin"] = c.DelayMin.String()
 	configMap["DelayMax"] = c.DelayMax.String()
 	configMap["FragmentDelay"] = c.FragmentDelay.String()
+	configMap["TCPPreflightDelay"] = c.TCPPreflightDelay.String()
+	configMap["TCPPreflightTimeout"] = c.TCPPreflightTimeout.String()
 
 	// Add slice fields
 	if len(c.FakeALPN) > 0 {
 		configMap["FakeALPN"] = c.FakeALPN
+	}
+	if len(c.TCPPreflightALPN) > 0 {
+		configMap["TCPPreflightALPN"] = c.TCPPreflightALPN
 	}
 
 	data, err := json.MarshalIndent(configMap, "", "  ")

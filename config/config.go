@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/voidr3aper-anon/Vwarp/config/noize"
+	masquenoize "github.com/voidr3aper-anon/Vwarp/masque/noize"
 )
 
 // UnifiedConfig represents the complete application configuration
@@ -36,7 +38,8 @@ type WireGuardConfig struct {
 type MASQUEConfig struct {
 	Enabled   bool             `json:"enabled"`
 	Preferred bool             `json:"preferred,omitempty"` // Prefer MASQUE over WireGuard
-	Config    *json.RawMessage `json:"config,omitempty"`    // MASQUE noize config
+	Noize     *bool            `json:"noize_enabled,omitempty"`
+	Config    *json.RawMessage `json:"config,omitempty"` // MASQUE noize config
 }
 
 // PsiphonConfig contains Psiphon-specific settings
@@ -88,18 +91,99 @@ func (uc *UnifiedConfig) GetNoizeConfig() (*noize.UnifiedNoizeConfig, error) {
 	}
 
 	// Extract MASQUE noize config
-	if uc.MASQUE != nil && uc.MASQUE.Enabled && uc.MASQUE.Config != nil {
+	masqueNoizeEnabled := true
+	if uc.MASQUE != nil && uc.MASQUE.Noize != nil {
+		masqueNoizeEnabled = *uc.MASQUE.Noize
+	}
+
+	if uc.MASQUE != nil && uc.MASQUE.Enabled && masqueNoizeEnabled && uc.MASQUE.Config != nil {
 		noizeConfig.MASQUE = &noize.MASQUENoize{
 			Enabled: true,
 		}
 
-		// Parse MASQUE noize config from raw JSON
-		if err := json.Unmarshal(*uc.MASQUE.Config, &noizeConfig.MASQUE.Config); err != nil {
+		parsed, err := parseMASQUENoizeConfig(uc.MASQUE.Config)
+		if err != nil {
 			return nil, fmt.Errorf("failed to parse MASQUE noize config: %w", err)
 		}
+		noizeConfig.MASQUE.Config = parsed
 	}
 
 	return noizeConfig, nil
+}
+
+func parseMASQUENoizeConfig(raw *json.RawMessage) (*masquenoize.NoizeConfig, error) {
+	if raw == nil {
+		return nil, nil
+	}
+
+	var rawConfig map[string]interface{}
+	if err := json.Unmarshal(*raw, &rawConfig); err != nil {
+		return nil, err
+	}
+
+	config := &masquenoize.NoizeConfig{}
+
+	type durationField struct {
+		keys   []string
+		assign func(time.Duration)
+	}
+
+	fields := []durationField{
+		{keys: []string{"JunkInterval", "junk_interval"}, assign: func(v time.Duration) { config.JunkInterval = v }},
+		{keys: []string{"HandshakeDelay", "handshake_delay"}, assign: func(v time.Duration) { config.HandshakeDelay = v }},
+		{keys: []string{"PacketDelay", "packet_delay"}, assign: func(v time.Duration) { config.PacketDelay = v }},
+		{keys: []string{"DelayMin", "delay_min"}, assign: func(v time.Duration) { config.DelayMin = v }},
+		{keys: []string{"DelayMax", "delay_max"}, assign: func(v time.Duration) { config.DelayMax = v }},
+		{keys: []string{"FragmentDelay", "fragment_delay"}, assign: func(v time.Duration) { config.FragmentDelay = v }},
+		{keys: []string{"TCPPreflightDelay", "tcp_preflight_delay"}, assign: func(v time.Duration) { config.TCPPreflightDelay = v }},
+		{keys: []string{"TCPPreflightTimeout", "tcp_preflight_timeout"}, assign: func(v time.Duration) { config.TCPPreflightTimeout = v }},
+	}
+
+	for _, field := range fields {
+		for _, key := range field.keys {
+			value, ok := rawConfig[key]
+			if !ok {
+				continue
+			}
+
+			dur, ok := parseDurationValue(value)
+			if ok {
+				field.assign(dur)
+			}
+			delete(rawConfig, key)
+			break
+		}
+	}
+
+	remainingData, err := json.Marshal(rawConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(remainingData, config); err != nil {
+		return nil, err
+	}
+
+	return config, nil
+}
+
+func parseDurationValue(value interface{}) (time.Duration, bool) {
+	switch v := value.(type) {
+	case string:
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return 0, false
+		}
+		return d, true
+	case float64:
+		return time.Duration(int64(v)), true
+	case int64:
+		return time.Duration(v), true
+	case int:
+		return time.Duration(v), true
+	default:
+		return 0, false
+	}
 }
 
 // Validate validates the unified configuration

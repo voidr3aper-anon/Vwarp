@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	connectip "github.com/Diniboy1123/connect-ip-go"
 	"github.com/quic-go/quic-go"
@@ -98,6 +100,14 @@ func ConnectTunnelWithNoize(
 		}
 	}
 
+	if noizeConfig != nil {
+		if err := executeTCPPreflight(ctx, endpoint, tlsConfig, noizeConfig, logger); err != nil {
+			if logger != nil {
+				logger.Warn("TCP preflight failed", "error", err, "mode", noizeConfig.TCPPreflightMode)
+			}
+		}
+	}
+
 	conn, err := quic.Dial(
 		ctx,
 		quicConn,
@@ -144,6 +154,92 @@ func ConnectTunnelWithNoize(
 	}
 
 	return udpConn, tr, ipConn, rsp, nil
+}
+
+func executeTCPPreflight(
+	ctx context.Context,
+	endpoint *net.UDPAddr,
+	tlsConfig *tls.Config,
+	noizeConfig *noize.NoizeConfig,
+	logger *slog.Logger,
+) error {
+	mode := strings.TrimSpace(noizeConfig.TCPPreflightMode)
+	if mode == "" {
+		return nil
+	}
+
+	if delay := noizeConfig.TCPPreflightDelay; delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	timeout := noizeConfig.TCPPreflightTimeout
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return ctx.Err()
+		}
+		if remaining < timeout {
+			timeout = remaining
+		}
+	}
+
+	preflightCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	target := endpoint.String()
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(preflightCtx, "tcp", target)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if logger != nil {
+		logger.Info("TCP preflight connected", "mode", mode, "endpoint", target)
+	}
+
+	switch mode {
+	case "connect":
+		return nil
+	case "tls-h2", "tls-http11":
+		serverName := strings.TrimSpace(noizeConfig.TCPPreflightSNI)
+		if serverName == "" && tlsConfig != nil {
+			serverName = tlsConfig.ServerName
+		}
+
+		alpn := append([]string(nil), noizeConfig.TCPPreflightALPN...)
+		if len(alpn) == 0 {
+			if mode == "tls-h2" {
+				alpn = []string{"h2"}
+			} else {
+				alpn = []string{"http/1.1"}
+			}
+		}
+
+		preflightTLS := tls.Client(conn, &tls.Config{
+			ServerName:         serverName,
+			InsecureSkipVerify: tlsConfig != nil && tlsConfig.InsecureSkipVerify,
+			NextProtos:         alpn,
+		})
+		if err := preflightTLS.HandshakeContext(preflightCtx); err != nil {
+			return err
+		}
+
+		if logger != nil {
+			state := preflightTLS.ConnectionState()
+			logger.Info("TCP preflight TLS handshake complete", "mode", mode, "serverName", serverName, "alpn", state.NegotiatedProtocol)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported TCP preflight mode: %s", mode)
+	}
 }
 
 // ConnectTunnelOptimized is an enhanced version of api.ConnectTunnel that applies UDP buffer optimizations

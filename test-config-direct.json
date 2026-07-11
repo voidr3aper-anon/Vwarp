@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "bind": "127.0.0.1:8086",
+  "endpoint": "162.159.198.1:443",
+  "key": "",
+  "dns": "1.1.1.1",
+  "test_url": "https://cp.cloudflare.com/",
+  "proxy": "",
+  "wireguard": {
+    "enabled": false,
+    "config": "",
+    "reserved": "0,0,0",
+    "fwmark": 0
+  },
+  "masque": {
+    "enabled": true,
+    "noize_enabled": false,
+    "preferred": false
+  },
+  "psiphon": {
+    "enabled": false,
+    "country": "US"
+  },
+  "metadata": {
+    "name": "direct-masque-test",
+    "description": "minimal direct MASQUE test with no noize mutation",
+    "author": "copilot",
+    "created_at": "2026-06-30T00:00:00Z"
+  }
+}

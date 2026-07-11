@@ -15,3 +15,9 @@ stuff/
 test-config.json
 *-config.json
 config-*.json
+
+# Local test workspace artifacts
+/test/
+/cmd/masque-probe/
+/masque-probe
+/vwarp-test
